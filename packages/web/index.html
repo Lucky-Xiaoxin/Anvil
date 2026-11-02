@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ANVIL · 铁砧</title>
+    <meta name="description" content="ANVIL（铁砧）· 个人 ICPC 训练工作台 · 深色机房 + 炉火" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23F5A524' d='M1.4 5.2h12.4l5.4 3.5H1.4zM4.9 13.2h10.3l2.9 5.6H2z'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <!-- 内联图标：几何线条，零外部依赖 -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <symbol id="i-anvil" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M1.4 5.2h12.4l5.4 3.5H1.4z" />
+          <path fill="currentColor" opacity=".72" d="M8.2 8.7h3.9l-.9 4.5H9.1z" />
+          <path fill="currentColor" d="M4.9 13.2h10.3l2.9 5.6H2z" />
+          <path
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+            opacity=".5"
+            d="M18.4 2.6l2.6-1.2M20.6 6.1h3.2"
+          />
+        </symbol>
+        <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+          <rect x="3" y="3" width="7.4" height="7.4" rx="1.4" />
+          <rect x="13.6" y="3" width="7.4" height="7.4" rx="1.4" />
+          <rect x="3" y="13.6" width="7.4" height="7.4" rx="1.4" />
+          <rect x="13.6" y="13.6" width="7.4" height="7.4" rx="1.4" />
+        </symbol>
+        <symbol id="i-map" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <circle cx="5.5" cy="5.8" r="2.3" />
+          <circle cx="18.5" cy="5.2" r="2.3" />
+          <circle cx="12" cy="13" r="2.3" />
+          <circle cx="5.5" cy="19.2" r="2.3" />
+          <circle cx="18.5" cy="18.8" r="2.3" />
+          <path d="M7.4 7.1 10.2 11.4M16.6 6.7 13.8 11.4M11.2 15.1 6.9 17.8M12.9 15.1l4 2.8" />
+        </symbol>
+        <symbol id="i-cog" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3.1" />
+          <path d="M12 3v2.2M12 18.8V21M21 12h-2.2M5.2 12H3M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6M18.4 18.4l-1.6-1.6M7.2 7.2 5.6 5.6" />
+        </symbol>
+        <symbol id="i-sync" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M20.4 11.2A8.4 8.4 0 0 0 6 6.2L3.8 8.4" />
+          <path d="M3.6 12.8a8.4 8.4 0 0 0 14.4 5l2.2-2.2" />
+          <path d="M3.6 4.6v3.9h3.9M20.4 19.4v-3.9h-3.9" />
+        </symbol>
+        <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m4.5 12.6 4.8 4.8L19.5 6.8" />
+        </symbol>
+        <symbol id="i-warn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3.6 22 20.4H2z" />
+          <path d="M12 9.6v5.1" />
+          <circle cx="12" cy="17.3" r=".9" fill="currentColor" stroke="none" />
+        </symbol>
+        <symbol id="i-plug" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+          <path d="M8.6 3v5.2M15.4 3v5.2" />
+          <path d="M5.4 8.2h13.2v3.1a6.6 6.6 0 0 1-13.2 0z" />
+          <path d="M12 17.9V21" />
+        </symbol>
+        <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6 6 18" />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 12h14M13 6.5 18.5 12 13 17.5" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+          <circle cx="10.8" cy="10.8" r="6.3" />
+          <path d="m15.4 15.4 4.6 4.6" />
+        </symbol>
+        <!-- 切片 4 · 模拟榜单（榜单柱 + 计时盘）与回放走带 / 封榜 -->
+        <symbol id="i-board" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round">
+          <rect x="2.6" y="12.4" width="3.6" height="9" rx="1.1" />
+          <rect x="8.1" y="8.2" width="3.6" height="13.2" rx="1.1" />
+          <circle cx="17.6" cy="9.4" r="5.4" />
+          <path d="M17.6 6.4v3.2h2.3" stroke-linecap="round" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M8.2 5.2v13.6L19.2 12z" />
+        </symbol>
+        <symbol id="i-pause" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M7.4 5h3.1v14H7.4zM13.5 5h3.1v14h-3.1z" />
+        </symbol>
+        <symbol id="i-stop" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M6.4 6.4h11.2v11.2H6.4z" />
+        </symbol>
+        <symbol id="i-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M2.6 12S6.1 6.4 12 6.4 21.4 12 21.4 12 17.9 17.6 12 17.6 2.6 12 2.6 12Z" />
+          <circle cx="12" cy="12" r="2.7" />
+        </symbol>
+        <symbol id="i-noflag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3.6 4.4 20.4 20.4" />
+          <path d="M9.8 6.9A10 10 0 0 1 12 6.6c5.9 0 9.4 5.4 9.4 5.4a17.5 17.5 0 0 1-3.4 3.9M6.3 8.6A16.9 16.9 0 0 0 2.6 12s3.5 5.4 9.4 5.4a9.8 9.8 0 0 0 3.2-.5" />
+        </symbol>
+        <symbol id="i-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9.5 5.5 16 12l-6.5 6.5" />
+        </symbol>
+        <!-- v7 · 「我的成绩」幽灵行入口（照 design/mock-04-simboard.html v7 原样抄） -->
+        <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="8.2" r="3.6"/><path d="M5.4 19.4c1.2-3.2 3.6-4.8 6.6-4.8s5.4 1.6 6.6 4.8"/></symbol>
+        <!-- 切片 5a · 工坊：新建 / 文件夹 / 文件 / 改名 / 归档 / 回收站 -->
+        <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M3 7.2a1.6 1.6 0 0 1 1.6-1.6h4.6l2 2.2h8.2A1.6 1.6 0 0 1 21 9.4v8.2a1.6 1.6 0 0 1-1.6 1.6H4.6A1.6 1.6 0 0 1 3 17.6z" />
+        </symbol>
+        <symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M6 3.5h7.2L18.5 9v11.5H6z" />
+          <path d="M13.2 3.5V9h5.3" />
+        </symbol>
+        <symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="m4.2 19.8 4.4-1.1L19 8.3a2.2 2.2 0 0 0-3.1-3.1L5.5 15.6z" />
+          <path d="m14.7 6.4 2.9 2.9" />
+        </symbol>
+        <symbol id="i-archive" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <rect x="3.5" y="4.5" width="17" height="5" rx="1.2" />
+          <path d="M5 9.5v9a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5v-9M10 13.5h4" />
+        </symbol>
+        <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="M5 4.5h11l3 3v12H5z" />
+          <path d="M8 4.5v5h7v-5M8 19.5v-6h8v6" />
+        </symbol>
+        <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+          <path d="m12 3.6 2.6 5.2 5.7.8-4.1 4 .9 5.7-5.1-2.7-5.1 2.7.9-5.7-4.1-4 5.7-.8z" />
+        </symbol>
+        <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4.5 6.5h15M9 6.5V4.8a1.3 1.3 0 0 1 1.3-1.3h3.4A1.3 1.3 0 0 1 15 4.8v1.7" />
+          <path d="M6.5 6.5 7.4 20a1.5 1.5 0 0 0 1.5 1.4h6.2a1.5 1.5 0 0 0 1.5-1.4l.9-13.5M10 10.5v6.5M14 10.5v6.5" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
