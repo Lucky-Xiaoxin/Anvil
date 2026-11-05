@@ -330,8 +330,8 @@ describe('模板文件读写（切片 5a.1）', () => {
   });
 });
 
-describe('默认模板（切片 5a.1；题组沿用，2026-10-26 补记）', () => {
-  it('未指定模板时用 updatedAt 最新的非归档模板放入 solution.cpp', async () => {
+describe('模板复制（默认模板语义已移除：省略 / null / 空串都不复制）', () => {
+  it('省略 templateId 不复制，原来的「最新模板自动套用」不再发生', async () => {
     await initRoot();
     const older = await service.create({ kind: 'template', title: 'Older' });
     writeFileSync(join(absOf(older.relPath), 'template.cpp'), '// older\n');
@@ -340,10 +340,12 @@ describe('默认模板（切片 5a.1；题组沿用，2026-10-26 补记）', () 
     writeFileSync(join(absOf(newer.relPath), 'template.cpp'), '// newer\n');
 
     const auto = await service.create({ kind: 'problem', title: 'Auto Template' });
-    expect(readFileSync(join(absOf(auto.relPath), 'solution.cpp'), 'utf8')).toBe('// newer\n');
+    expect(service.object(auto.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
+    const set = await service.create({ kind: 'problemset', title: 'Auto Set' });
+    expect(service.object(set.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
   });
 
-  it('显式模板优先；null / 空串表示不复制；归档模板不参与默认', async () => {
+  it('显式模板照常复制；null / 空串表示不复制；归档模板显式指定仍可用', async () => {
     await initRoot();
     const a = await service.create({ kind: 'template', title: 'Alpha' });
     writeFileSync(join(absOf(a.relPath), 'template.cpp'), '// alpha\n');
@@ -360,20 +362,17 @@ describe('默认模板（切片 5a.1；题组沿用，2026-10-26 补记）', () 
     expect(service.object(empty.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
 
     await service.update({ id: b.id, archived: true });
-    const fallback = await service.create({ kind: 'problem', title: 'Fallback' });
-    expect(readFileSync(join(absOf(fallback.relPath), 'solution.cpp'), 'utf8')).toBe('// alpha\n');
+    const archived = await service.create({ kind: 'problem', title: 'Archived Source', templateId: b.id });
+    expect(readFileSync(join(absOf(archived.relPath), 'solution.cpp'), 'utf8')).toBe('// beta\n');
   });
 
-  it('新建题组同样用默认模板（5a-2 起题组是唯一可建单元）：只放 solution.cpp', async () => {
+  it('题组显式模板只放 solution.cpp，不带 test.cpp', async () => {
     await initRoot();
-    const bare = await service.create({ kind: 'problemset', title: 'Bare' });
-    expect(service.object(bare.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
-
     const tpl = await service.create({ kind: 'template', title: 'Base' });
     writeFileSync(join(absOf(tpl.relPath), 'template.cpp'), '// base\n');
     writeFileSync(join(absOf(tpl.relPath), 'test.cpp'), 'int main() { return 0; }\n');
 
-    const set = await service.create({ kind: 'problemset', title: 'TreeDP' });
+    const set = await service.create({ kind: 'problemset', title: 'TreeDP', templateId: tpl.id });
     expect(readFileSync(join(absOf(set.relPath), 'solution.cpp'), 'utf8')).toBe('// base\n');
     expect(service.object(set.id).files.some((f) => f.path === 'test.cpp')).toBe(false);
   });
@@ -392,6 +391,24 @@ describe('默认模板（切片 5a.1；题组沿用，2026-10-26 补记）', () 
     expect(service.object(none.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
 
     await expect(service.create({ kind: 'contest', title: 'Nope', templateId: alpha.id })).rejects.toMatchObject({ kind: 'invalid' });
+  });
+
+  it('题组显式空串同样不复制；模板 id 不存在是 not-found；指向非模板是 invalid', async () => {
+    await initRoot();
+    const tpl = await service.create({ kind: 'template', title: 'Base' });
+    writeFileSync(join(absOf(tpl.relPath), 'template.cpp'), '// base\n');
+
+    const empty = await service.create({ kind: 'problemset', title: 'Empty Choice', templateId: '' });
+    expect(service.object(empty.id).files.some((f) => f.path === 'solution.cpp')).toBe(false);
+
+    await expect(
+      service.create({ kind: 'problemset', title: 'Missing', templateId: 'obj_0000000000' }),
+    ).rejects.toMatchObject({ kind: 'not-found' });
+
+    const note = await service.create({ kind: 'note', title: 'Notes' });
+    await expect(
+      service.create({ kind: 'problemset', title: 'Wrong Kind', templateId: note.id }),
+    ).rejects.toMatchObject({ kind: 'invalid' });
   });
 });
 

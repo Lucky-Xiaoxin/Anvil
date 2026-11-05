@@ -20,7 +20,7 @@ import { WorkCreate, type WorkDialog } from './WorkCreate.tsx';
 import { WorkDetail } from './WorkDetail.tsx';
 import { WorkImport } from './WorkImport.tsx';
 import { WorkList } from './WorkList.tsx';
-import { KIND_NAME, KIND_ORDER, defaultDirOf, filterWorkObjects, kindCounts, type WorkSort, type WorkSortKey } from './derive.ts';
+import { KIND_NAME, KIND_ORDER, availableTemplates, defaultDirOf, filterWorkObjects, kindCounts, type WorkSort, type WorkSortKey } from './derive.ts';
 import { importResultSummary } from './import-derive.ts';
 import { createLatestGate } from './latest.ts';
 import { browserStore, loadWorkSort, saveWorkSort, workSortDirHint, workSortDirLabel } from './work-sort.ts';
@@ -459,6 +459,8 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
   const allById = useMemo(() => new Map(allObjects.map((obj) => [obj.id, obj])), [allObjects]);
   /** 活动比赛（跨视图口径）：新建 / 登记对话框的关联选择器只列活动比赛（27 §5.2） */
   const activeContests = useMemo(() => allObjects.filter((obj) => obj.kind === 'contest' && !obj.effectiveArchived), [allObjects]);
+  /** 新建题组的模板选择：只列非归档模板 */
+  const activeTemplates = useMemo(() => availableTemplates(allObjects), [allObjects]);
   const parentTitle = detail === null || detail.parentId === null ? null : (allById.get(detail.parentId)?.title ?? null);
 
   if (setup !== null) {
@@ -800,6 +802,7 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
       {dialog !== null ? (
         <WorkCreate
           contests={activeContests}
+          templates={activeTemplates}
           dialog={dialog}
           onDone={(title, id) => {
             setDialog(null);

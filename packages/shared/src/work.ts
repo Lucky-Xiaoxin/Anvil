@@ -135,28 +135,6 @@ export interface WorkTemplateSaveInput {
 /** 与全局 64KB 请求体区分：模板正文按 UTF-8 字节计 */
 export const WORK_TEMPLATE_CONTENT_MAX = 64 * 1024;
 
-export interface WorkTemplateCandidate {
-  kind: WorkKind;
-  effectiveArchived: boolean;
-  updatedAt: string;
-  relPath: string;
-}
-
-/**
- * 新建题目时的默认模板：非归档模板里 updatedAt 最新的一件。
- * 服务端与创建对话框共用这一条判据，避免两边各挑各的。
- */
-export function defaultTemplateOf<T extends WorkTemplateCandidate>(objects: readonly T[]): T | null {
-  let best: T | null = null;
-  for (const obj of objects) {
-    if (obj.kind !== 'template' || obj.effectiveArchived) continue;
-    if (best === null || obj.updatedAt > best.updatedAt || (obj.updatedAt === best.updatedAt && obj.relPath < best.relPath)) {
-      best = obj;
-    }
-  }
-  return best;
-}
-
 /* ---------- VP 成绩存档（docs/contracts/23 §15.3 的先行实现） ---------- */
 
 export type WorkArenaGhostResult = 'AC' | 'WA' | 'TLE' | 'RE' | 'CE';

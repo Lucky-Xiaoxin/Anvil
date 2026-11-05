@@ -3,7 +3,6 @@ import {
   PROBLEM_ALIAS_RE,
   compareSourcePathNatural,
   dayKeyOf,
-  defaultTemplateOf,
   sourceParentPath,
 } from '@anvil/shared';
 import type { ProblemMarksProblem, WorkKind, WorkObjectDto } from '@anvil/shared';
@@ -103,8 +102,6 @@ export interface WorkListModel {
   /** 旧 problem 无父对象 */
   ungrouped: WorkObjectDto[];
   templates: WorkObjectDto[];
-  /** 新建对象默认套用的那件模板（23 §6.1：非归档里 updatedAt 最新的一件）；列表里打「默认」标 */
-  defaultTemplateId: string | null;
   notes: WorkObjectDto[];
   /** parentId 指向不存在的对象：扫描层已报错，这里兜底照常列出 */
   orphans: WorkObjectDto[];
@@ -190,8 +187,6 @@ export function groupWorkObjects(
     problemSets: [...problemSets].sort((a, b) => compareWorkObjects(a, b, sort)),
     ungrouped: [...ungrouped].sort((a, b) => compareWorkObjects(a, b, sort)),
     templates: [...templates].sort((a, b) => compareWorkObjects(a, b, sort)),
-    // 判据走全量对象：kind 筛选挡掉一部分模板时，默认那件不能跟着变
-    defaultTemplateId: defaultTemplateOf(all)?.id ?? null,
     notes: [...notes].sort((a, b) => compareWorkObjects(a, b, sort)),
     orphans: [...orphans].sort((a, b) => compareWorkObjects(a, b, sort)),
   };
@@ -370,6 +365,23 @@ export function linkedProblemsetsOf(
 /** 关联比赛选择器候选（27 §2.3）：只列活动比赛；比赛侧 0..n，不排除被占用者 */
 export function availableContests(objects: readonly WorkObjectDto[]): WorkObjectDto[] {
   return objects.filter((obj) => obj.kind === 'contest' && !obj.effectiveArchived).sort(byRelPath);
+}
+
+/* ---------- 新建题组的模板选择（不复制 / 指定模板） ---------- */
+
+/** 选择值：__none__ = 不复制（提交 null）；其余 = 模板 id */
+export type TemplateChoice = string;
+
+export const TEMPLATE_CHOICE_NONE = '__none__';
+
+/** 新建题组可选模板：只列非归档模板，按 relPath 正序 */
+export function availableTemplates(objects: readonly WorkObjectDto[]): WorkObjectDto[] {
+  return objects.filter((obj) => obj.kind === 'template' && !obj.effectiveArchived).sort(byRelPath);
+}
+
+/** 选择 → 提交值：__none__ 为 null（不复制），其余原样为模板 id */
+export function templateChoiceToId(choice: TemplateChoice): string | null {
+  return choice === TEMPLATE_CHOICE_NONE ? null : choice;
 }
 
 /**

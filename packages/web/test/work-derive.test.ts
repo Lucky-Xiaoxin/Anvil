@@ -3,6 +3,7 @@ import type { WorkObjectDto } from '@anvil/shared';
 import {
   allLabels,
   availableContests,
+  availableTemplates,
   contestCountLabel,
   expandKeysForSelection,
   filterWorkObjects,
@@ -14,6 +15,7 @@ import {
   pathBreadcrumb,
   problemsetLinkOf,
   problemsFromArena,
+  templateChoiceToId,
 } from '../src/components/work/derive.ts';
 
 const obj = (patch: Partial<WorkObjectDto> = {}): WorkObjectDto => ({
@@ -340,20 +342,22 @@ describe('选中项自动展开键（修复：手动折叠不被弹回的前提�
   });
 });
 
-describe('默认模板标（23 §6.1：非归档里 updatedAt 最新的一件）', () => {
-  const older = obj({ id: 'obj_0000000070', kind: 'template', title: 'Older', relPath: 'templates/a', updatedAt: '2026-10-20T00:00:00.000Z' });
-  const newer = obj({ id: 'obj_0000000071', kind: 'template', title: 'Newer', relPath: 'templates/b', updatedAt: '2026-10-22T00:00:00.000Z' });
-  const set = obj({ id: 'obj_0000000072', kind: 'problemset', title: 'S', relPath: 'practice/2026-10/s' });
+describe('新建题组的模板选择（不复制 / 指定模板）', () => {
+  const template = (id: string, title: string, relPath: string, patch: Partial<WorkObjectDto> = {}): WorkObjectDto =>
+    obj({ id, kind: 'template', title, relPath, ...patch });
 
-  it('给默认那件打标；判据看全量对象，不随 kind 筛选变', () => {
-    const all = [older, newer, set];
-    expect(groupWorkObjects(all, all).defaultTemplateId).toBe(newer.id);
-    expect(groupWorkObjects([set], all).defaultTemplateId).toBe(newer.id);
+  it('availableTemplates 只列非归档模板，按 relPath 正序', () => {
+    const b = template('obj_0000000081', 'B', 'templates/b');
+    const a = template('obj_0000000080', 'A', 'templates/a');
+    const archived = template('obj_0000000082', 'Old', 'templates/c', { archived: true, effectiveArchived: true });
+    const set = obj({ id: 'obj_0000000083', kind: 'problemset', relPath: 'practice/2026-10/s' });
+
+    expect(availableTemplates([b, archived, a, set]).map((o) => o.id)).toEqual([a.id, b.id]);
+    expect(availableTemplates([archived, set])).toEqual([]);
   });
 
-  it('归档模板不参与；一件模板都没有就没有默认', () => {
-    const archived = { ...newer, archived: true, effectiveArchived: true };
-    expect(groupWorkObjects([older, archived], [older, archived]).defaultTemplateId).toBe(older.id);
-    expect(groupWorkObjects([set], [set]).defaultTemplateId).toBeNull();
+  it('templateChoiceToId：__none__ 为 null（不复制），其余原样为模板 id', () => {
+    expect(templateChoiceToId('__none__')).toBeNull();
+    expect(templateChoiceToId('obj_0000000080')).toBe('obj_0000000080');
   });
 });

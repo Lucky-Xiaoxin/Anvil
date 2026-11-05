@@ -12,7 +12,6 @@ import {
   cleanLabels,
   collectProblemTags,
   contestPathOk,
-  defaultTemplateOf,
   isImportSourceName,
   isWorkKind,
   parseWorkMeta,
@@ -119,7 +118,7 @@ export interface WorkCreateInput {
   parentId?: string;
   problemKey?: string;
   arenaPath?: string;
-  /** 省略 = 用默认模板；null / '' = 明确不复制模板；字符串 = 指定模板 */
+  /** 省略 / null / '' = 不复制模板；非空字符串 = 指定模板 */
   templateId?: string | null;
 }
 
@@ -773,9 +772,6 @@ export class WorkService {
       templateSource = idx.byId.get(explicitTemplate) ?? null;
       if (templateSource === null) throw new WorkError('not-found', '来源模板不存在');
       if (templateSource.record.meta.kind !== 'template') throw new WorkError('invalid', 'templateId 必须指向模板对象');
-    } else if ((kind === 'problem' || kind === 'problemset') && input.templateId === undefined) {
-      // 省略模板 = 用默认模板（非归档里 updatedAt 最新的那件）；题组与旧 problem 同一判据
-      templateSource = this.defaultTemplateOf(idx);
     }
 
     const date = this.nowDate();
@@ -853,20 +849,6 @@ export class WorkService {
       if (err instanceof WorkError) throw err;
       throw new WorkError('internal', `创建对象失败：${asError(err).message}`);
     }
-  }
-
-  /** 默认模板：非归档模板里 updatedAt 最新的一件；旧 problem 与题组共用 */
-  private defaultTemplateOf(idx: WorkIndex): IndexedObject | null {
-    const picked = defaultTemplateOf(
-      idx.objects.map((obj) => ({
-        kind: obj.record.meta.kind,
-        effectiveArchived: obj.effectiveArchived,
-        updatedAt: obj.record.meta.updatedAt,
-        relPath: obj.relPath,
-        obj,
-      })),
-    );
-    return picked?.obj ?? null;
   }
 
   private lookupProblemName(problemKey: string): string | null {

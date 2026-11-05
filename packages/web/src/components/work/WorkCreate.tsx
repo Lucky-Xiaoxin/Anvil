@@ -3,7 +3,7 @@ import type { WorkKind, WorkObjectDto, WorkUnregisteredDto } from '@anvil/shared
 import { ApiError, createWork, adoptWork } from '../../api.ts';
 import { messageOf } from '../../format.ts';
 import { Icon } from '../ui.tsx';
-import { availableContests } from './derive.ts';
+import { TEMPLATE_CHOICE_NONE, availableContests, templateChoiceToId, type TemplateChoice } from './derive.ts';
 
 export type WorkDialog =
   | { mode: 'create' }
@@ -25,6 +25,8 @@ const MODES: ReadonlyArray<{ mode: CreateMode; label: string; hint: string }> = 
 interface Props {
   /** 活动比赛（27 §5.2）：关联选择器只列活动对象 */
   contests: WorkObjectDto[];
+  /** 活动模板：新建题组时可选来源（按 relPath 正序） */
+  templates: WorkObjectDto[];
   dialog: WorkDialog;
   onDone: (title: string, id: string) => void;
   onClose: () => void;
@@ -38,13 +40,15 @@ function modeOfHint(kind: WorkKind | null): CreateMode {
   return 'problemset';
 }
 
-export function WorkCreate({ contests, dialog, onDone, onClose }: Props) {
+export function WorkCreate({ contests, templates, dialog, onDone, onClose }: Props) {
   const adopting = dialog.mode === 'adopt';
   const target = adopting ? dialog.target : null;
   const [mode, setMode] = useState<CreateMode>(target === null ? 'problemset' : modeOfHint(target.kindHint));
   const [title, setTitle] = useState(() => (target === null ? '' : (target.relPath.split('/').pop() ?? '')));
   const [arenaPath, setArenaPath] = useState('');
   const [parentId, setParentId] = useState('');
+  /** __none__ = 不复制（默认）；其余 = 模板 id */
+  const [templateChoice, setTemplateChoice] = useState<TemplateChoice>(TEMPLATE_CHOICE_NONE);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -60,6 +64,8 @@ export function WorkCreate({ contests, dialog, onDone, onClose }: Props) {
     try {
       const kind: WorkKind = mode;
       const link = mode === 'problemset' && parentId !== '' ? { parentId } : {};
+      // 只有题组创建带 templateId：null = 不复制，id = 指定模板
+      const templateId = mode === 'problemset' ? templateChoiceToId(templateChoice) : undefined;
       if (adopting && target !== null) {
         const made = await adoptWork({
           relPath: target.relPath,
@@ -74,6 +80,7 @@ export function WorkCreate({ contests, dialog, onDone, onClose }: Props) {
           title: title.trim(),
           ...(mode === 'contest' && arenaPath.trim() !== '' ? { arenaPath: arenaPath.trim() } : {}),
           ...link,
+          ...(templateId === undefined ? {} : { templateId }),
         });
         onDone(made.title, made.id);
       }
@@ -147,6 +154,22 @@ export function WorkCreate({ contests, dialog, onDone, onClose }: Props) {
                 ))}
               </select>
               <span className="wk-hint">关联不移动文件夹；一个比赛可以关联多个题组（27 §2.1）。</span>
+            </label>
+          ) : null}
+
+          {mode === 'problemset' && !adopting && templates.length > 0 ? (
+            <label className="wk-field">
+              <span className="wk-label">模板</span>
+              <select className="wk-select" value={templateChoice} onChange={(e) => setTemplateChoice(e.target.value)}>
+                <option value={TEMPLATE_CHOICE_NONE} className="wk-select__none">
+                  不复制模板
+                </option>
+                {templates.map((tpl) => (
+                  <option value={tpl.id} key={tpl.id}>
+                    {tpl.title}
+                  </option>
+                ))}
+              </select>
             </label>
           ) : null}
 

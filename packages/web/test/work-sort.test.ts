@@ -80,15 +80,15 @@ describe('列表排序（契约 32 §3.1）', () => {
     expect(parseWorkSort('path')).toEqual(WORK_SORT_DEFAULT);
   });
 
-  it('分节独立排序；比赛组与旧子题也按所选键；默认模板判据不受影响', () => {
+  it('分节独立排序；比赛组与旧子题也按所选键', () => {
     const c1 = obj({ id: 'obj_0000000020', kind: 'contest', relPath: 'contests/a', title: 'A', contentMtime: 100 });
     const c2 = obj({ id: 'obj_0000000021', kind: 'contest', relPath: 'contests/b', title: 'B', contentMtime: 300 });
     const p1 = obj({ id: 'obj_0000000022', kind: 'problem', relPath: 'contests/a/1', parentId: c1.id, contentMtime: 100 });
     const p2 = obj({ id: 'obj_0000000023', kind: 'problem', relPath: 'contests/a/2', parentId: c1.id, contentMtime: 200 });
     const s1 = obj({ id: 'obj_0000000024', kind: 'problemset', relPath: 'practice/2026-10/1', contentMtime: 100 });
     const s2 = obj({ id: 'obj_0000000025', kind: 'problemset', relPath: 'practice/2026-10/2', contentMtime: 300 });
-    const t1 = obj({ id: 'obj_0000000026', kind: 'template', relPath: 'templates/1', contentMtime: 100, updatedAt: '2026-10-01T00:00:00.000Z' });
-    const t2 = obj({ id: 'obj_0000000027', kind: 'template', relPath: 'templates/2', contentMtime: 300, updatedAt: '2026-10-02T00:00:00.000Z' });
+    const t1 = obj({ id: 'obj_0000000026', kind: 'template', relPath: 'templates/1', contentMtime: 100 });
+    const t2 = obj({ id: 'obj_0000000027', kind: 'template', relPath: 'templates/2', contentMtime: 300 });
     const all = [c1, c2, p1, p2, s1, s2, t1, t2];
 
     const model = groupWorkObjects(all, all, { key: 'modified', dir: 'desc' });
@@ -96,8 +96,6 @@ describe('列表排序（契约 32 §3.1）', () => {
     expect(model.groups[1]?.problems.map((p) => p.id)).toEqual([p2.id, p1.id]);
     expect(model.problemSets.map((s) => s.id)).toEqual([s2.id, s1.id]);
     expect(model.templates.map((t) => t.id)).toEqual([t2.id, t1.id]);
-    // 默认模板仍按 updatedAt 最新（t2），与列表排序无关
-    expect(model.defaultTemplateId).toBe(t2.id);
   });
 });
 

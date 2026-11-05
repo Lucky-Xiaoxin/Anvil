@@ -165,7 +165,7 @@ export const createWork = (body: {
   parentId?: string;
   problemKey?: string;
   arenaPath?: string;
-  /** 省略 = 默认模板；null / '' = 不复制 */
+  /** 省略 / null / '' = 不复制；非空字符串 = 指定模板 */
   templateId?: string | null;
 }): Promise<WorkObjectDetailDto> => request<WorkObjectDetailDto>('/api/work/create', post(body), 30_000);
 

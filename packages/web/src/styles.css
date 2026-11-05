@@ -1500,6 +1500,8 @@ code,.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-fea
 .wk-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(245,165,36,.14)}
 .wk-select:disabled{opacity:.5}
 .wk-select--inline{width:132px;height:25px;font-size:10.5px;padding:0 6px}
+/* 「不复制模板」选项：与弹层黑底拉开一档灰；原生 option 着色各浏览器支持不一，仅作提示 */
+.wk-select__none{background:#2E3746;color:var(--text-dim)}
 .wk-chips{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
 .wk-labelinput{
   height:24px;width:136px;padding:0 8px;background:transparent;border:1px dashed var(--line);

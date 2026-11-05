@@ -521,7 +521,7 @@ let res = await post('/api/work/update', { id: problem.id, tags: { primary: 'gra
     expect(res.json().error.kind).toBe('import-conflict');
   });
 
-  it('template：读空文件 / 保存 / 冲突 / 非模板拒绝 / 新建题目自动复制默认模板', async () => {
+  it('template：读空文件 / 保存 / 冲突 / 非模板拒绝 / 显式模板复制到新建题组', async () => {
     await boot();
     await initApi();
     const template = await create('template', 'DSU');
@@ -540,7 +540,7 @@ let res = await post('/api/work/update', { id: problem.id, tags: { primary: 'gra
     expect(res.statusCode).toBe(409);
     expect(res.json().error.kind).toBe('conflict');
 
-    const problem = await create('problem', 'Auto Template');
+    const problem = await create('problem', 'Auto Template', { templateId: template.id });
     res = await app.inject({ method: 'GET', url: `/api/work/object?id=${problem.id}` });
     expect(res.json().files.some((f: { path: string }) => f.path === 'solution.cpp')).toBe(true);
 

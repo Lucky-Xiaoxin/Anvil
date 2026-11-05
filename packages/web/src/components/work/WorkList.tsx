@@ -90,8 +90,6 @@ function ObjectRow(props: {
   allById?: ReadonlyMap<string, WorkObjectDto>;
   /** 比赛行的关联题组数（当前视图口径，27 §5.1） */
   setCount?: number;
-  /** 模板行：这件就是新建对象默认套用的那件（23 §6.1） */
-  defaultTag?: boolean;
 }) {
   const { obj, selected, child = false, crumbs } = props;
   const dateText = workDateLabel(obj, props.dateMode);
@@ -110,7 +108,6 @@ function ObjectRow(props: {
           {obj.kind === 'problem' ? <span className="wk-kindbadge">{WORK_SECTION.problemBadge}</span> : null}
           <span className="wk-row__titletext">{obj.title}</span>
           {obj.effectiveArchived ? <span className="wk-badge">归档</span> : null}
-          {props.defaultTag === true ? <span className="wk-badge">默认</span> : null}
         </div>
         {crumbs !== undefined ? (
           <div className="wk-row__crumb" title={obj.relPath}>
@@ -638,7 +635,6 @@ export function WorkList(props: Props) {
               obj={obj}
               selected={selectedId === obj.id}
               onSelect={props.onSelect}
-              defaultTag={obj.id === model.defaultTemplateId}
               dateMode={dateMode}
             />
           ))}
