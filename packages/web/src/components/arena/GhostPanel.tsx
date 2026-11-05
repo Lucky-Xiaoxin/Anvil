@@ -106,7 +106,7 @@ export function GhostPanel({ problems, durationMs, data, readOnly = false, onCha
   const sorted = [...subs].sort(byOrder);
 
   return (
-    <PopShell head={{ title: '我的成绩', sub: '你 VP 时的逐发提交 · 罚时 = 过题分钟 + 20 ×（过题前失败 · CE 不罚）' }}>
+    <PopShell head={{ title: '我的成绩', sub: 'VP 提交记录 · 罚时 = AC 时间 + 20 × 失败数（CE 不计）' }}>
       <div className="pop__rule" />
       {readOnly ? (
         <div className="ghhint">查看历史成绩：逐发只读；要修改请点顶栏「编辑成绩」。</div>
@@ -146,15 +146,13 @@ export function GhostPanel({ problems, durationMs, data, readOnly = false, onCha
               提交
             </button>
           </div>
-          <div className={'ghhint' + (bad ? ' is-bad' : '')}>{hint === '' ? '时间 = 时:分（自动补冒号）· 同一题第二个 AC 不收' : hint}</div>
+          {hint !== '' ? <div className={'ghhint' + (bad ? ' is-bad' : '')}>{hint}</div> : null}
         </>
       )}
       <div className="pop__rule" />
       <div className="ghsubs">
         {sorted.length === 0 ? (
-          <div className="hint" style={{ padding: '6px 0' }}>
-            还没录。选题 · 选判名 · 填 时:分 · 提交。
-          </div>
+          <div className="hint" style={{ padding: '6px 0' }}>还没录。</div>
         ) : (
           sorted.map((s, ix) => (
             <div className="ghsub" key={`${s.p}-${s.t}-${s.r}-${ix}`}>
@@ -184,7 +182,7 @@ export function GhostPanel({ problems, durationMs, data, readOnly = false, onCha
           </button>
         )}
       </div>
-      <div className="ghnote">{readOnly ? '展示我只影响这次查看，不改存档。' : '逐发即明细：点榜上格子看每题；段内成绩按时间轴与封榜视角自动同口径。'}</div>
+      {readOnly ? <div className="ghnote">展示我只影响这次查看，不改存档。</div> : null}
     </PopShell>
   );
 }

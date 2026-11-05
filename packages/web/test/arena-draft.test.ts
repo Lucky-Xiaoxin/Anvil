@@ -5,6 +5,7 @@ import {
   canSaveDraft,
   declareFinished,
   detachDraftTarget,
+  discardUnsavedDraft,
   draftFromLegacyLive,
   draftFromRecord,
   draftKey,
@@ -91,6 +92,58 @@ describe('删除目标存档后的草稿解绑（契约 29 §6.2）', () => {
     const noTarget = { ...draft, target: null, savedBaseline: null };
     saveDraft(store, PATH, noTarget);
     expect(detachDraftTarget(store, PATH, REC_ID)).toBe(false);
+  });
+});
+
+describe('丢弃未保存练习（打磨批次 1）：只删「已结束且未保存」，其余一律拒绝', () => {
+  it('已结束未保存（timed）：删除草稿键；补录草稿（manual + declared）同样可丢', () => {
+    const s = memoryStore();
+    saveDraft(s, PATH, finishedDraft());
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: true });
+    expect(s.getItem(draftKey(PATH))).toBeNull();
+    expect(loadDraft(s, PATH).kind).toBe('none');
+
+    const m = memoryStore();
+    saveDraft(m, PATH, newManualDraft(DURATION, ghost));
+    expect(discardUnsavedDraft(m, PATH)).toEqual({ ok: true });
+    expect(loadDraft(m, PATH).kind).toBe('none');
+  });
+
+  it('进行中 / 旧数据待确认 / 保存结果未对账（pendingSave）：拒绝且原样不动', () => {
+    const s = memoryStore();
+    saveDraft(s, PATH, newDraft(NOW));
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: false, reason: 'not-finished' });
+    expect(loadDraft(s, PATH).kind).toBe('draft');
+
+    saveDraft(s, PATH, { ...newDraft(NOW), phase: 'legacy-unconfirmed', session: null, ghost });
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: false, reason: 'not-finished' });
+    expect(loadDraft(s, PATH).kind).toBe('draft');
+
+    const pending = {
+      ...finishedDraft(),
+      pendingSave: { recordId: REC_ID, payload: { arenaPath: PATH, recordId: REC_ID, name: 'A', result: timed, ghost } },
+    };
+    saveDraft(s, PATH, pending);
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: false, reason: 'pending-save' });
+    expect(loadDraft(s, PATH).kind).toBe('draft');
+  });
+
+  it('保存过（有 target / baseline）与草稿不存在 / 读不出来：拒绝', () => {
+    const s = memoryStore();
+    saveDraft(s, PATH, savedDraft());
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: false, reason: 'has-target' });
+    expect(loadDraft(s, PATH).kind).toBe('draft');
+
+    // target 已解绑但 baseline 还在（异常残留）：照样拒，宁可多留不误删
+    saveDraft(s, PATH, { ...savedDraft(), target: null });
+    expect(discardUnsavedDraft(s, PATH)).toEqual({ ok: false, reason: 'already-saved' });
+
+    expect(discardUnsavedDraft(s, 'official/icpc/none.srk.json')).toEqual({ ok: false, reason: 'no-draft' });
+
+    const bad = memoryStore();
+    bad.setItem(draftKey(PATH), '{ 半截');
+    expect(discardUnsavedDraft(bad, PATH)).toEqual({ ok: false, reason: 'unreadable' });
+    expect(bad.getItem(draftKey(PATH))).not.toBeNull();
   });
 });
 

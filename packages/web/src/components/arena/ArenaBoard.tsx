@@ -45,6 +45,7 @@ import {
 import type { LeafRow } from './catalog.ts';
 import { GhostPanel } from './GhostPanel.tsx';
 import { Popover, PopShell, resClass, type Anchor } from './pops.tsx';
+import { SaveDiscardSlider } from './SaveDiscardSlider.tsx';
 import {
   applySaveSuccess,
   buildCreatePayload,
@@ -52,6 +53,7 @@ import {
   canSaveDraft,
   clearDraft,
   declareFinished,
+  discardUnsavedDraft,
   draftFromLegacyLive,
   draftFromRecord,
   finishDraft,
@@ -860,6 +862,25 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
     });
   }, []);
 
+  /* ---------- 丢弃未保存练习（打磨批次 1）：守卫统一在 draft.ts，顶栏与目录共用同一份 ---------- */
+  const discardUnsavedHere = useCallback((): void => {
+    if (saveBusy) {
+      setActionErr('正在保存：先等这次保存结束，再丢弃');
+      return;
+    }
+    const res = discardUnsavedDraft(store, row.path);
+    if (!res.ok) {
+      setActionErr('只有「已结束 · 未保存」的练习可以丢弃');
+      return;
+    }
+    commit(null, false);
+    setSaveErr(null);
+    setSaveFlash(null);
+    setConflict(null);
+    onDraftChanged?.();
+    onBack();
+  }, [commit, onBack, onDraftChanged, row.path, saveBusy, store]);
+
   const confirmName = useCallback(
     (name: string): void => {
       if (nameState === null) return;
@@ -1114,6 +1135,9 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
   const freezeLabel = clockHM(model.freezeStart);
   const teamCount = board.rows.length - (board.ghostTeam ? 1 : 0);
   const ghostRow = board.ghostTeam === null || board.ghostTeam === undefined ? null : board.rows.find((r) => r.ghost === true) ?? null;
+  /* 练习进行中且一笔都没录：顶栏胶囊常驻为占位「我 —」。
+     只动顶栏渲染，榜上幽灵行的注入条件（subs>0，engine 口径）不动 —— 占位态榜上没有这一行 */
+  const ghostCapsuleEmpty = ghostRow === null && runningHere && (currentGhost === null || currentGhost.subs.length === 0);
 
   const recordForView = identity.kind === 'view' ? view.record : null;
 
@@ -1155,6 +1179,9 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
   })();
 
   const canSaveHere = (identity.kind === 'practice' || identity.kind === 'edit') && canSaveDraft(draft) && !stale && draftErr === null;
+  /* 「已结束 · 未保存」（当前练习、无保存目标、无在途请求）才用滑动分裂按钮：
+     编辑存档 / 保存结果未对账时维持原保存按钮（丢弃对它们不适用，重试对账入口也保持原样） */
+  const sliderHere = identity.kind === 'practice' && canSaveHere && draft !== null && draft.target === null && draft.pendingSave === null;
   const targetName = draft?.target?.name ?? null;
   const showTargetArrow = canSaveHere && targetName !== null && recordCount >= 2 && saveFlash === null;
 
@@ -1251,7 +1278,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
 
         <span className="topbar__spacer" />
 
-        {ghostRow === null ? null : (
+        {ghostRow !== null ? (
           <button
             className="ghrank"
             onClick={() => {
@@ -1267,7 +1294,11 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
           >
             <i className="dot dot--ok" />我 <b>第 {ghostRow.rank} 名</b>
           </button>
-        )}
+        ) : ghostCapsuleEmpty ? (
+          <button className="ghrank ghrank--empty" onClick={openGhostFromMenu} title="我的成绩 · 0 题 · 0 罚时 · 点击打开我的成绩面板">
+            <i className="dot dot--idle" />我 <b>—</b>
+          </button>
+        ) : null}
 
         <ArenaMenu items={menuItems} />
 
@@ -1289,15 +1320,25 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
 
         {canSaveHere ? (
           <>
-            <button
-              className="btn btn--sm btn--primary"
-              disabled={saveBusy || conflict !== null || draft?.pendingSave !== null}
-              title={draft?.pendingSave !== null ? '上次保存结果未确认：先重试对账' : draft?.target != null ? `保存到：${draft.target.name}` : '首次保存会新建一档'}
-              onClick={requestSaveCurrent}
-            >
-              <Icon id="i-save" />
-              {saveBusy ? '保存中…' : '保存'}
-            </button>
+            {sliderHere ? (
+              <SaveDiscardSlider
+                size="bar"
+                busy={saveBusy || conflict !== null}
+                saveLabel={saveBusy ? '保存中…' : '保存'}
+                onSave={requestSaveCurrent}
+                onDiscard={discardUnsavedHere}
+              />
+            ) : (
+              <button
+                className="btn btn--sm btn--primary"
+                disabled={saveBusy || conflict !== null || draft?.pendingSave !== null}
+                title={draft?.pendingSave !== null ? '上次保存结果未确认：先重试对账' : draft?.target != null ? `保存到：${draft.target.name}` : '首次保存会新建一档'}
+                onClick={requestSaveCurrent}
+              >
+                <Icon id="i-save" />
+                {saveBusy ? '保存中…' : '保存'}
+              </button>
+            )}
             {saveFlash !== null ? (
               <span className="arena-saveflash" role="status">
                 {saveFlash}
@@ -1978,7 +2019,27 @@ const CellView = memo(function CellView({
   onCell: (ev: React.MouseEvent, ti: number, p: number) => void;
 }) {
   const { show, hide } = useTip();
-  if (cell.st === 'none') return <div className="pcell is-none" />;
+  if (cell.st === 'none') {
+    // 幽灵行空格子：这一题在当前回放时刻还没有可显示的提交，悬停直说，不再借行级提示「点击看每题逐发」；真队空格子维持无提示
+    if (!row.ghost) return <div className="pcell is-none" />;
+    return (
+      <div
+        className="pcell is-none"
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          show({
+            x: r.left + r.width / 2,
+            y: r.top,
+            date: `${problem.alias ?? ''} · ${problem.title ?? ''}`,
+            value: '暂无提交',
+            zero: true,
+            sub: ['我的成绩这一题在当前回放时刻还没有可显示的提交'],
+          });
+        }}
+        onMouseLeave={hide}
+      />
+    );
+  }
 
   const readout = (): { value: string; cls: string } => {
     if (cell.st === 'ac') return { value: `AC ${minutesOf(cell.t)}′ ×${cell.n}${cell.post ? ' · 封榜后' : ''}`, cls: 'is-ok' };
@@ -2040,8 +2101,8 @@ function SubPop({ model, ti, p, viewMs, cap, ghost }: { model: ContestModel; ti:
                 <span className="pop__lg">手动录入</span>
               </div>
             ))}
+            {/* Frozen 说明只留在真队明细弹层那处（更贴近冻结格出现的场景），这里不再重复 */}
             <div className="hint" style={{ marginTop: 8 }}>
-              {viewMs > model.freezeStart && viewMs < model.duration ? '封榜段内结果未公开，一律显示 Frozen · ' : ''}
               罚时 = 过题分钟 + 20 ×（过题前失败 · CE 不罚）
             </div>
           </>
@@ -2080,8 +2141,9 @@ function SubPop({ model, ti, p, viewMs, cap, ghost }: { model: ContestModel; ti:
           <span className="pop__lg">{x.language}</span>
         </div>
       ))}
+      {/* 两句重复的 Frozen 说明去重后留下的这一处：紧挨着逐发明细里真正的 Frozen 行 */}
       <div className="hint" style={{ marginTop: 8 }}>
-        {viewMs > model.freezeStart && viewMs < model.duration ? '封榜段内结果未公开，一律显示 Frozen · ' : ''}
+        {viewMs > model.freezeStart && viewMs < model.duration ? '封榜段内一律显示 Frozen · ' : ''}
         罚时 = 过题分钟 + 20 ×（过题前失败 · CE 不罚）
       </div>
     </PopShell>

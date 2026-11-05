@@ -16,6 +16,7 @@ import {
   buildCreatePayload,
   buildUpdatePayload,
   canSaveDraft,
+  discardUnsavedDraft,
   draftSummary,
   finishDraft,
   isDirty,
@@ -33,6 +34,7 @@ import {
   type Store,
 } from './session.ts';
 import { NameDialog } from './ArenaDialogs.tsx';
+import { SaveDiscardSlider } from './SaveDiscardSlider.tsx';
 import type { ArenaEntry } from './Arena.tsx';
 import type { ArenaEntryMode } from './ArenaBoard.tsx';
 
@@ -164,6 +166,22 @@ export function ArenaCatalog({ store, onEnter, sessionEpoch, onCount, entry, onE
       const next = finishDraft(d, span, at, Date.now());
       if (!saveDraft(store, row.path, next)) {
         setSaveErr({ path: row.path, text: '浏览器存储写不进去：结束状态没有保存' });
+        return;
+      }
+      setSaveErr(null);
+      setSessionRev((n) => n + 1);
+      setDraftRev((n) => n + 1);
+    },
+    [store],
+  );
+
+  /* 丢弃未保存练习（打磨批次 1）：与回放顶栏共用 draft.ts 的同一份守卫；
+     只删浏览器草稿（未保存练习没有服务端档案），成功后该行不再显示「已结束 · 未保存」 */
+  const discardRow = useCallback(
+    (row: LeafRow): void => {
+      const res = discardUnsavedDraft(store, row.path);
+      if (!res.ok) {
+        setSaveErr({ path: row.path, text: '只有「已结束 · 未保存」的练习可以丢弃' });
         return;
       }
       setSaveErr(null);
@@ -443,7 +461,7 @@ export function ArenaCatalog({ store, onEnter, sessionEpoch, onCount, entry, onE
             {state === 'loading' ? <Loading /> : null}
             {state === 'error' ? <Failed text={error} onRetry={() => void fetchCatalog(false)} /> : null}
             {state === 'ready' && q.trim() !== '' ? (
-              <Found hits={hits} q={q} livePaths={livePaths} rowState={rowState} onEnter={onEnter} onEndDraft={endDraft} onSaveDraft={requestSaveRow} pf={pf} />
+              <Found hits={hits} q={q} livePaths={livePaths} rowState={rowState} onEnter={onEnter} onEndDraft={endDraft} onSaveDraft={requestSaveRow} onDiscardDraft={discardRow} pf={pf} />
             ) : null}
             {state === 'ready' && q.trim() === '' ? (
               <>
@@ -459,6 +477,7 @@ export function ArenaCatalog({ store, onEnter, sessionEpoch, onCount, entry, onE
                     onEnter={onEnter}
                     onEndDraft={endDraft}
                     onSaveDraft={requestSaveRow}
+                    onDiscardDraft={discardRow}
                     pf={pf}
                     top
                   />
@@ -469,7 +488,7 @@ export function ArenaCatalog({ store, onEnter, sessionEpoch, onCount, entry, onE
 
           <div className="cat__foot">
             <span>
-              来源 <b>algoux/srk-collection</b>（社区快照）· 回放的是已打完的比赛
+              来源 <b>algoux/srk-collection</b>（社区快照）
             </span>
             {pruned > 0 ? <span>已清理 {pruned} 个过期缓存</span> : null}
             <span className="spacer" />
@@ -556,6 +575,7 @@ function Found({
   onEnter,
   onEndDraft,
   onSaveDraft,
+  onDiscardDraft,
   pf,
 }: {
   hits: LeafRow[];
@@ -565,6 +585,7 @@ function Found({
   onEnter: Props['onEnter'];
   onEndDraft: (row: LeafRow) => void;
   onSaveDraft: (row: LeafRow) => void;
+  onDiscardDraft: (row: LeafRow) => void;
   pf: PrefetchState;
 }) {
   return (
@@ -595,6 +616,7 @@ function Found({
             onEnter={onEnter}
             onEndDraft={onEndDraft}
             onSaveDraft={onSaveDraft}
+            onDiscardDraft={onDiscardDraft}
             {...prefetchOf(r, pf)}
             onPrefetch={pf.onPrefetch}
           />
@@ -614,6 +636,7 @@ interface GroupProps {
   onEnter: Props['onEnter'];
   onEndDraft: (row: LeafRow) => void;
   onSaveDraft: (row: LeafRow) => void;
+  onDiscardDraft: (row: LeafRow) => void;
   pf: PrefetchState;
   top?: boolean;
   chain?: string;
@@ -629,6 +652,7 @@ const GroupView = memo(function GroupView({
   onEnter,
   onEndDraft,
   onSaveDraft,
+  onDiscardDraft,
   pf,
   top = false,
   chain = '',
@@ -686,6 +710,7 @@ const GroupView = memo(function GroupView({
             onEnter={onEnter}
             onEndDraft={onEndDraft}
             onSaveDraft={onSaveDraft}
+            onDiscardDraft={onDiscardDraft}
             pf={pf}
             chain={key}
           />
@@ -700,6 +725,7 @@ const GroupView = memo(function GroupView({
             onEnter={onEnter}
             onEndDraft={onEndDraft}
             onSaveDraft={onSaveDraft}
+            onDiscardDraft={onDiscardDraft}
             {...prefetchOf(r, pf)}
             onPrefetch={pf.onPrefetch}
           />
@@ -722,18 +748,22 @@ interface RowProps {
   onEnter: Props['onEnter'];
   onEndDraft: (row: LeafRow) => void;
   onSaveDraft: (row: LeafRow) => void;
+  onDiscardDraft: (row: LeafRow) => void;
   cached: boolean;
   busy: boolean;
   err: string;
   onPrefetch: (path: string) => void;
 }
 
-const Row = memo(function Row({ row, live, state, alt = false, path, onEnter, onEndDraft, onSaveDraft, cached, busy, err, onPrefetch }: RowProps) {
+const Row = memo(function Row({ row, live, state, alt = false, path, onEnter, onEndDraft, onSaveDraft, onDiscardDraft, cached, busy, err, onPrefetch }: RowProps) {
   const draft = state.draft;
   const saving = state.saving;
   const finished = draft !== null && draft.phase === 'finished';
   const running = draft !== null && draft.phase === 'running' && live !== null;
   const canSave = finished && canSaveDraft(draft) && (draft.target === null || isDirty(draft));
+  /* 「已结束 · 未保存」（无保存目标、无在途请求）用滑动分裂按钮；更新存档 / 结果未对账维持原按钮 */
+  const canSlider =
+    finished && canSave && draft !== null && draft.target === null && draft.pendingSave === null;
   const errText = err !== '' ? err : state.err;
   const status = draft === null ? null : draftSummary(draft);
   return (
@@ -772,7 +802,15 @@ const Row = memo(function Row({ row, live, state, alt = false, path, onEnter, on
             <button className="btn btn--xs btn--ghost" title="只读看终榜，不改当前草稿" onClick={() => onEnter(row, 'review')}>
               查看终榜
             </button>
-            {canSave ? (
+            {canSlider ? (
+              <SaveDiscardSlider
+                size="row"
+                busy={saving}
+                saveLabel={saving ? '保存中…' : '保存'}
+                onSave={() => onSaveDraft(row)}
+                onDiscard={() => onDiscardDraft(row)}
+              />
+            ) : canSave ? (
               <button className="btn btn--xs" disabled={saving} onClick={() => onSaveDraft(row)} title="保存到工坊；已有目标时只更新那一档">
                 <Icon id="i-save" />
                 {saving ? '保存中…' : state.savedNow ? '已保存' : '保存成绩'}

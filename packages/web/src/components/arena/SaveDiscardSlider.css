@@ -1,0 +1,105 @@
+/* ==========================================================================
+   保存 / 丢弃 滑动分裂按钮（打磨批次 1 · SaveDiscardSlider.tsx）
+   两张「脸」宽度互为消长、总宽不变：展开侧 flex-grow:1 吃满余量，收起侧固定 8px 色条，
+   色条悬停探头到 18px（对侧 flex-grow:1 自动让位）。尺寸整体对齐 .btn--sm（28px 高 / 68px 宽，
+   即原「保存」按钮的真实大小）。基色取根 tokens（--accent / --bad），
+   派生色收敛在本文件的局部变量里，别处不要抄色值。
+   ========================================================================== */
+
+.sds{
+  --sds-w:68px;
+  --sds-strip:8px;
+  --sds-probe:18px;
+  --sds-dur:340ms;
+  --sds-ease:cubic-bezier(.5,.1,.2,1);
+  --sds-save-bg:var(--accent);
+  --sds-save-bg-hover:#FFB63C;      /* 同 .btn--primary:hover */
+  --sds-save-ink:var(--accent-ink);
+  --sds-drop-bg:var(--bad);
+  --sds-drop-bg-hover:#FF6B64;
+  --sds-drop-bg-armed:#C23A31;      /* 警示态：深一档的红 */
+  --sds-drop-ink:#FFF3F2;
+  position:relative;
+  display:inline-flex;
+  flex:0 0 auto;
+  width:var(--sds-w);
+  height:28px;                       /* 对齐 .btn--sm */
+  border-radius:var(--r-s);
+  border:1px solid rgba(0,0,0,.35);  /* 深色描边 + 上下明暗，立体一点 */
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.22), 0 1px 3px rgba(0,0,0,.4);
+  overflow:hidden;
+  isolation:isolate;
+}
+.sds--row{                          /* 目录行档：对齐 .btn--xs（24px 高） */
+  --sds-w:60px;
+  --sds-probe:16px;
+  height:24px;
+}
+
+.sds__face{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-width:0;margin:0;border:0;padding:0;
+  font-family:var(--font-ui);font-size:12px;font-weight:600;letter-spacing:.01em;white-space:nowrap;
+  cursor:pointer;overflow:hidden;
+  transition:flex-grow var(--sds-dur) var(--sds-ease),
+             flex-basis var(--sds-dur) var(--sds-ease),
+             background-color 160ms var(--ease);
+}
+.sds--row .sds__face{font-size:11.5px}
+.sds__face:disabled{cursor:default;opacity:.55}
+.sds__face:focus-visible{outline:2px solid var(--accent-2);outline-offset:-2px;z-index:1}
+
+.sds__face--save{flex:1 1 0;background:var(--sds-save-bg);color:var(--sds-save-ink)}
+.sds__face--save:hover:not(:disabled){background:var(--sds-save-bg-hover)}
+.sds__face--drop{flex:0 0 var(--sds-strip);background:var(--sds-drop-bg);color:var(--sds-drop-ink)}
+.sds__face--drop:hover:not(:disabled){background:var(--sds-drop-bg-hover)}
+
+/* discard / armed：保存脸压成左缘黄条，丢弃脸铺开（文字延迟淡入由下面的 opacity 规则管） */
+.sds[data-state="discard"] .sds__face--save,
+.sds[data-state="armed"] .sds__face--save{flex-grow:0;flex-basis:var(--sds-strip)}
+.sds[data-state="discard"] .sds__face--drop,
+.sds[data-state="armed"] .sds__face--drop{flex-grow:1;flex-basis:0}
+
+/* 收起色条悬停 / 聚焦：探头变宽 */
+.sds[data-state="save"] .sds__face--drop:hover:not(:disabled),
+.sds[data-state="save"] .sds__face--drop:focus-visible,
+.sds[data-state="discard"] .sds__face--save:hover:not(:disabled),
+.sds[data-state="discard"] .sds__face--save:focus-visible,
+.sds[data-state="armed"] .sds__face--save:hover:not(:disabled),
+.sds[data-state="armed"] .sds__face--save:focus-visible{flex-basis:var(--sds-probe)}
+
+/* 收起态：文案彻底退出布局，色条里只剩图标——探头时图标才居中可见（照 demo 的分层做法） */
+.sds[data-state="save"] .sds__face--drop .sds__lab,
+.sds[data-state="discard"] .sds__face--save .sds__lab,
+.sds[data-state="armed"] .sds__face--save .sds__lab{display:none}
+
+.sds__ic{width:14px;height:14px;flex:0 0 auto;opacity:0;transition:opacity 150ms var(--ease)}
+.sds--row .sds__ic{width:12px;height:12px}
+.sds__lab{opacity:0;line-height:1;transition:opacity 160ms var(--ease)}
+
+/* 展开侧：图标 + 文案延迟淡入（等宽度铺开大半） */
+.sds[data-state="save"] .sds__face--save .sds__ic,
+.sds[data-state="save"] .sds__face--save .sds__lab,
+.sds[data-state="discard"] .sds__face--drop .sds__ic,
+.sds[data-state="discard"] .sds__face--drop .sds__lab,
+.sds[data-state="armed"] .sds__face--drop .sds__ic,
+.sds[data-state="armed"] .sds__face--drop .sds__lab{opacity:1;transition-delay:120ms}
+
+/* 收起条探头：只淡入图标，文案保持隐藏 */
+.sds[data-state="save"] .sds__face--drop:hover:not(:disabled) .sds__ic,
+.sds[data-state="save"] .sds__face--drop:focus-visible .sds__ic,
+.sds[data-state="discard"] .sds__face--save:hover:not(:disabled) .sds__ic,
+.sds[data-state="discard"] .sds__face--save:focus-visible .sds__ic,
+.sds[data-state="armed"] .sds__face--save:hover:not(:disabled) .sds__ic,
+.sds[data-state="armed"] .sds__face--save:focus-visible .sds__ic{opacity:1}
+
+/* 初见提示：红条轻微呼吸，点开过一次就摘（SaveDiscardSlider.tsx 里的 is-hint） */
+.sds__face--drop.is-hint{animation:sds-hint 1.6s var(--ease) infinite}
+@keyframes sds-hint{0%,100%{filter:brightness(1)}50%{filter:brightness(1.5)}}
+
+/* 警示态：深红 + 轻微脉动 */
+.sds__face--drop.is-armed{background:var(--sds-drop-bg-armed);animation:sds-arm 900ms var(--ease) infinite}
+.sds__face--drop.is-armed:hover:not(:disabled){background:var(--sds-drop-bg-armed)}
+/* 警示态 60px 脸放不下图标+六字：藏图标，只留「再点一次」 */
+.sds__face--drop.is-armed .sds__ic{display:none}
+@keyframes sds-arm{0%,100%{filter:brightness(1)}50%{filter:brightness(1.16)}}

@@ -707,7 +707,6 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
                   <div className="wk-detail__title">
                     <span>回收站</span>
                   </div>
-                  <p className="wk-hint">删除只进回收站；恢复按原路径移回，路径被占时会拒绝。清空会永久删除全部条目。</p>
                 </div>
                 <div className="wk-empty">
                   共 <b>{tree.trash.length}</b> 项。中间列表里点「恢复」，或清空回收站。
@@ -792,7 +791,7 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
                 }}
               />
             ) : (
-              <div className="wk-empty">从中间选一个对象，标记、文件与打开入口都在这儿。</div>
+              <div className="wk-empty">从左侧选一个对象，标记、文件与打开入口都在这儿。</div>
             )}
           </div>
         </aside>

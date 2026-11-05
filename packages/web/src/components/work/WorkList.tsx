@@ -551,7 +551,7 @@ export function WorkList(props: Props) {
             );
           })
         )}
-        <p className="wk-hint">恢复按类型分派：对象回原路径，成绩回原比赛的 .anvil-records / 旧根文件；原位置被占或父比赛缺失时会拒绝，不会自动改名。清空会永久删除两类合法条目。</p>
+        <p className="wk-hint">删除进回收站，可恢复</p>
       </div>
     );
   }

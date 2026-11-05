@@ -195,7 +195,7 @@ export function Dashboard({ source, dash, today, notice, firstPaint, srcStatus, 
           </div>
         </div>
         <div className="afoot">
-          <span className="card__note">日格 = 当日 AC 去重题数 · 两源共用同一把阈值</span>
+          <span className="card__note">日格 = 当日 AC 去重题数</span>
         </div>
       </div>
 

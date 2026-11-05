@@ -195,6 +195,30 @@ export function detachDraftTarget(store: Store, arenaPath: string, recordId: str
   return saveDraft(store, arenaPath, { ...loaded.draft, target: null, savedBaseline: null });
 }
 
+/* ---------- 丢弃未保存练习（打磨批次 1）：回放顶栏与目录行共用的同一份守卫 ---------- */
+
+export type DiscardUnsavedResult =
+  | { ok: true }
+  | { ok: false; reason: 'no-draft' | 'unreadable' | 'not-finished' | 'pending-save' | 'has-target' | 'already-saved' };
+
+/**
+ * 只删「已结束且未保存」的练习草稿（浏览器 `arena:draft:<path>`；未保存练习没有服务端档案，
+ * 不涉及任何请求）。防御式守卫：进行中 / 旧数据待确认 / 保存结果未对账（pendingSave）/ 保存过
+ * （target 或 baseline 还在）一律拒绝，原样不动 —— 顶栏与目录都走这里，不许各自放宽。
+ */
+export function discardUnsavedDraft(store: Store, path: string): DiscardUnsavedResult {
+  const loaded = loadDraft(store, path);
+  if (loaded.kind === 'error') return { ok: false, reason: 'unreadable' };
+  if (loaded.kind !== 'draft') return { ok: false, reason: 'no-draft' };
+  const d = loaded.draft;
+  if (d.phase !== 'finished' || d.result === null) return { ok: false, reason: 'not-finished' };
+  if (d.pendingSave !== null) return { ok: false, reason: 'pending-save' };
+  if (d.target !== null) return { ok: false, reason: 'has-target' };
+  if (d.savedBaseline !== null) return { ok: false, reason: 'already-saved' };
+  clearDraft(store, path);
+  return { ok: true };
+}
+
 export function newDraftId(): string {
   const bytes = new Uint8Array(8);
   crypto.getRandomValues(bytes);

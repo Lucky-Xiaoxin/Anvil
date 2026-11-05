@@ -42,8 +42,7 @@ export function relativeTime(epochSeconds: number | null, now = Date.now()): str
   const hour = Math.floor(min / 60);
   if (hour < 24) return `${hour} 小时前`;
   const day = Math.floor(hour / 24);
-  if (day < 7) return `${day} 天前`;
-  return '7 天以上';
+  return `${day} 天前`;
 }
 
 /* ---------- 比赛时钟读数（模拟榜单）：相对开赛的毫秒，不是墙上时钟 ---------- */

@@ -1231,6 +1231,8 @@ code,.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-fea
   background:rgba(245,165,36,.07);border:1px solid rgba(245,165,36,.32);border-radius:999px;cursor:pointer;white-space:nowrap}
 .ghrank:hover{color:var(--text);border-color:rgba(245,165,36,.6)}
 .ghrank b{font-family:var(--font-num);font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums}
+/* 占位读数（练习进行中、一笔没录）：破折号别亮成成绩色，灰下去表示「还没有数」 */
+.ghrank--empty b{color:var(--text-mute);font-weight:500}
 .ghform{display:flex;align-items:center;gap:8px}
 .ghsel{height:26px;padding:0 5px;background:#0B0F14;border:1px solid var(--line);border-radius:var(--r-s);color:var(--text);
   font-family:var(--font-num);font-size:11.5px}

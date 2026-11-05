@@ -247,9 +247,7 @@ export function WorkRecords({ arenaPath, contestTitle, archived, onOpenRecord, o
               ))}
             </div>
           ) : null}
-          <p className="wk-hint">
-            查看 / 编辑在回放页；这里只管名称与回收。删除只进回收站，清空回收站才永久删除。
-          </p>
+          <p className="wk-hint">删除进回收站，可恢复</p>
         </>
       ) : null}
 
