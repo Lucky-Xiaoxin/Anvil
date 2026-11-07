@@ -4,8 +4,13 @@
  *
  * 封榜段内的记录一律显示 `Frozen` —— 契约 §4 要的是这个词（不泄露判名），
  * 稿内的 `?` 是格子的读法，弹层里按 §4 走。
+ *
+ * 焦点生命周期（榜单键盘操作批次）：开层时把焦点收进弹层本体（`role="dialog"` 的可聚焦容器），
+ * Tab 从内容走到右上角关闭按钮；点弹层外（backdrop）时 `preventDefault` 掉 mousedown 的默认聚焦行为，
+ * 免得刚聚焦的控件被浏览器抢走。还焦给榜上那一格由调用方负责（`ArenaBoard` 的 `pop` 收尾 effect），
+ * 这里只管自己 —— 弹层依旧是非阻塞的锚定层，不换成整屏模态。
  */
-import { memo, type ReactNode } from 'react';
+import { memo, useEffect, useRef, type ReactNode } from 'react';
 
 /** 视口坐标：由调用方从被点元素的 getBoundingClientRect 拿来 */
 export interface Anchor {
@@ -52,12 +57,36 @@ export function Popover({
   const below = anchor.top + anchor.height + 8;
   const flip = below + height > viewport.h;
   const top = flip ? Math.max(10, anchor.top - 8 - height) : below;
+  const ref = useRef<HTMLDivElement | null>(null);
+  /*
+   * 开层就把焦点收进弹层本体（容器 `tabIndex=-1`）：键盘用户不用先 Tab 一遍才摸到关闭按钮，
+   * 读屏念得出 `aria-label`；Tab 继续走内容、最后落在右上角关闭。`preventScroll` 是因为弹层
+   * 是 fixed 层，让浏览器跟着滚动定位只会把榜体推走。
+   */
+  useEffect(() => {
+    ref.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <>
-      <div className="backdrop" onMouseDown={onClose} />
-      <div className={cls === undefined ? 'pop' : `pop ${cls}`} role="dialog" aria-modal="false" aria-label={label} style={{ left, top, width }}>
+      <div
+        className="backdrop"
+        onMouseDown={(e) => {
+          // mousedown 的默认行为是「点非聚焦元素就把焦点丢给 body」：不放回原格子的话，焦点就此丢失
+          e.preventDefault();
+          onClose();
+        }}
+      />
+      <div
+        ref={ref}
+        tabIndex={-1}
+        className={cls === undefined ? 'pop' : `pop ${cls}`}
+        role="dialog"
+        aria-modal="false"
+        aria-label={label}
+        style={{ left, top, width }}
+      >
         {children}
-        <button className="pop__x" aria-label="关闭" onClick={onClose}>
+        <button type="button" className="pop__x" aria-label="关闭" onClick={onClose}>
           ×
         </button>
       </div>

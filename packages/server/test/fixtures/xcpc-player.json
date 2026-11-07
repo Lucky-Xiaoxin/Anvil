@@ -1,5 +1,5 @@
 {
- "_note": "由 heimaom.cn/data/players/b1.json（快照 generatedAt 2026-09-28）裁剪的示例样本，标识已脱敏；skillPanel 已删（切片 4）。",
+ "_note": "由 heimaom.cn/data/players/b1.json（快照 generatedAt 2026-09-28）裁剪的示例样本，标识已脱敏；skillPanel 已删（切片 4）。starRow 是同分片另一名选手的 official:false 实测行（标识已脱敏），形状与本档打星演示用。",
  "snapshotAt": "2026-09-28T19:57:35.521003+00:00",
  "rankTotal": 63120,
  "detail": {
@@ -106,11 +106,12 @@
   }
  },
  "starRow": {
+  "key": "Another Player@Sample School",
   "row": {
    "contestId": "provincial__zj__zjcpc17th",
    "title": "浙江省第十七届“图森未来杯”大学生程序设计竞赛（线上赛，杭州师范大学 & 浙江大学）",
    "startAt": "2020-10-17T12:00:00+08:00",
-   "teamName": "Sample Team B",
+   "teamName": "Sample Team",
    "rank": 21,
    "teamCount": 436,
    "official": false,

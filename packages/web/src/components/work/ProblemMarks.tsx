@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   PROBLEM_PROGRESS_NAME,
   PROBLEM_TAG_LEN_MAX,
@@ -11,7 +11,15 @@ import {
 import { ApiError, getArenaContest, getWorkObject, syncProblemMarks, updateProblemMarks } from '../../api.ts';
 import { messageOf } from '../../format.ts';
 import { Icon } from '../ui.tsx';
-import { problemsFromArena } from './derive.ts';
+import {
+  PROBLEM_MARKS_FILTER_NAME,
+  PROBLEM_MARKS_FILTERS,
+  filterProblemsByMarks,
+  problemMarkFilterMatches,
+  problemMarksFilterCounts,
+  problemsFromArena,
+  type ProblemMarksFilter,
+} from './derive.ts';
 
 interface Props {
   contestId: string;
@@ -21,6 +29,8 @@ interface Props {
   archived: boolean;
   /** 本工作区已用过的题目标签（最多 200，界面只取前 20 条做补全） */
   suggestions: string[];
+  /** 进入时的筛选（首页深链传 todo）；之后变化只切筛选，不重置本地数据 */
+  initialFilter?: ProblemMarksFilter;
   onChanged: () => void;
   /** 有未落盘修改时告知父级，切换对象前拦一下（30 §6.2） */
   onUnsavedChange?: (unsaved: boolean) => void;
@@ -77,6 +87,8 @@ export function ProblemMarks(props: Props) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [tagDrafts, setTagDrafts] = useState<Record<string, string>>({});
   const [tagWarn, setTagWarn] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ProblemMarksFilter>(() => props.initialFilter ?? 'all');
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const setUnsaved = (unsaved: boolean): void => {
     (window as unknown as { __anvilMarksUnsaved?: boolean }).__anvilMarksUnsaved = unsaved;
@@ -89,6 +101,13 @@ export function ProblemMarks(props: Props) {
   const versionRef = useRef(0);
   const dirtyRef = useRef(false);
   const inFlightRef = useRef(false);
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  const filterBarRef = useRef<HTMLDivElement | null>(null);
+  const refocusFilterRef = useRef(false);
+  const uid = useId().replaceAll(':', '');
+
+  const counts = useMemo(() => problemMarksFilterCounts(problems, local), [problems, local]);
+  const visible = useMemo(() => filterProblemsByMarks(problems, local, filter), [problems, local, filter]);
 
   const applyDto = (dto: ProblemMarksDto | null, error: string | null): void => {
     const next = inputsOf(dto);
@@ -109,9 +128,25 @@ export function ProblemMarks(props: Props) {
 
   useEffect(() => {
     applyDto(props.marks, props.error);
+    setFilter(props.initialFilter ?? 'all');
+    setExpanded(new Set<string>());
     // 只在切换比赛时重置；同场的本地编辑不会被父级列表刷新覆盖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.contestId]);
+
+  // 深链换筛选（父级给 todo）：只切筛选，不动本地标记与草稿
+  useEffect(() => {
+    setFilter(props.initialFilter ?? 'all');
+  }, [props.initialFilter]);
+
+  // 改了进度后当前行会被筛掉：焦点交回正在生效的筛选胶囊，而不是掉到 body
+  useEffect(() => {
+    if (!refocusFilterRef.current) return;
+    refocusFilterRef.current = false;
+    const focused = document.activeElement;
+    if (focused !== null && rowsRef.current?.contains(focused) === true) return;
+    filterBarRef.current?.querySelector<HTMLButtonElement>(`[data-filter="${filter}"]`)?.focus();
+  });
 
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent): void => {
@@ -196,12 +231,30 @@ export function ProblemMarks(props: Props) {
     Object.hasOwn(local, alias) ? local[alias]! : { progress: null, star: false, tags: [] };
 
   const setProgress = (alias: string, progress: ProblemMarkProgress | null): void => {
+    const focused = document.activeElement;
+    if (
+      rowsRef.current !== null &&
+      focused !== null &&
+      rowsRef.current.contains(focused) &&
+      !problemMarkFilterMatches(progress, filter)
+    ) {
+      refocusFilterRef.current = true;
+    }
     commit(alias, { ...markOf(alias), progress });
   };
 
   const toggleStar = (alias: string): void => {
     const mark = markOf(alias);
     commit(alias, { ...mark, star: !mark.star });
+  };
+
+  const toggleExtras = (alias: string): void => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(alias)) next.delete(alias);
+      else next.add(alias);
+      return next;
+    });
   };
 
   const addTag = (alias: string): void => {
@@ -335,86 +388,147 @@ export function ProblemMarks(props: Props) {
               <option value={tag} key={tag} />
             ))}
           </datalist>
-          <div className="wk-marks__rows">
-            {problems.map((problem) => {
-              const mark = markOf(problem.alias);
-              const marked = Object.hasOwn(local, problem.alias);
-              const disabled = saveState === 'conflict';
-              return (
-                <div className={`wk-mark${marked ? ' is-marked' : ''}`} key={problem.alias}>
-                  <span className="wk-mark__alias" title={`题号 ${problem.alias}`}>
-                    {problem.alias}
-                  </span>
-                  <span className="wk-mark__title" title={problem.title}>
-                    {problem.title === '' ? <span className="wk-muted">（无题名）</span> : problem.title}
-                  </span>
-                  <span className="wk-mark__controls">
-                    <span className="wk-mark__seg" role="radiogroup" aria-label={`${problem.alias} 进度`}>
-                      {PROGRESS_OPTIONS.map((option) => (
-                        <label
-                          className={`wk-mark__opt${mark.progress === option.value ? ' is-on' : ''}${option.value === null ? ' is-none' : ''}`}
-                          key={option.label}
-                        >
-                          <input
-                            type="radio"
-                            name={`wk-progress-${problem.alias}`}
-                            checked={mark.progress === option.value}
-                            disabled={disabled}
-                            onChange={() => setProgress(problem.alias, option.value)}
-                          />
-                          <span>{option.label}</span>
-                        </label>
-                      ))}
+          <div className="wk-marks__filters" role="group" aria-label="按进度筛选题目" ref={filterBarRef}>
+            {PROBLEM_MARKS_FILTERS.map((key) => (
+              <button
+                type="button"
+                key={key}
+                className={`wk-marks__filter${filter === key ? ' is-on' : ''}`}
+                aria-pressed={filter === key}
+                data-filter={key}
+                onClick={() => setFilter(key)}
+              >
+                {PROBLEM_MARKS_FILTER_NAME[key]}
+                <b className="num">{counts[key]}</b>
+              </button>
+            ))}
+          </div>
+          {visible.length === 0 ? (
+            <div className="wk-marks__filterempty">
+              <span>{filter === 'todo' ? '这场比赛没有待补题了。' : '每道题都选过进度了。'}</span>
+              <span className="wk-muted">其它题目、重点和标签都还在，只是不在这里显示。</span>
+              <button type="button" className="btn btn--xs" onClick={() => setFilter('all')}>
+                查看全部
+              </button>
+            </div>
+          ) : (
+            <div className="wk-marks__rows" ref={rowsRef}>
+              {visible.map((problem) => {
+                const mark = markOf(problem.alias);
+                const marked = Object.hasOwn(local, problem.alias);
+                const disabled = saveState === 'conflict';
+                const open = expanded.has(problem.alias);
+                const extrasId = `wk-mark-extras-${uid}-${problem.alias}`;
+                const tagsText = mark.tags.join(' / ');
+                const draft = Object.hasOwn(tagDrafts, problem.alias) ? (tagDrafts[problem.alias] ?? '') : '';
+                const full = mark.tags.length >= PROBLEM_TAGS_MAX;
+                return (
+                  <div className={`wk-mark${marked ? ' is-marked' : ''}`} key={problem.alias}>
+                    <span className="wk-mark__alias" title={`题号 ${problem.alias}`}>
+                      {problem.alias}
                     </span>
-                    <button
-                      type="button"
-                      className={`wk-mark__star${mark.star ? ' is-on' : ''}`}
-                      aria-pressed={mark.star}
-                      disabled={disabled}
-                      title={mark.star ? '取消重点' : '标为重点'}
-                      onClick={() => toggleStar(problem.alias)}
-                    >
-                      <Icon id="i-star" />
-                      重点
-                    </button>
-                  </span>
-                  <span className="wk-mark__tags">
-                    {mark.tags.map((tag) => (
-                      <span className="wk-chip" key={tag}>
-                        {tag}
+                    <span className="wk-mark__title" title={problem.title}>
+                      <span>{problem.title === '' ? <span className="wk-muted">（无题名）</span> : problem.title}</span>
+                      {mark.star || mark.tags.length > 0 ? (
+                        <span className="wk-mark__summary">
+                          {mark.star ? <span className="is-star">重点</span> : null}
+                          {mark.tags.length > 0 ? <span title={tagsText}>{tagsText}</span> : null}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="wk-mark__controls">
+                      <span className="wk-mark__seg" role="radiogroup" aria-label={`${problem.alias} 进度`}>
+                        {PROGRESS_OPTIONS.map((option) => (
+                          <label
+                            className={`wk-mark__opt${mark.progress === option.value ? ' is-on' : ''}${option.value === null ? ' is-none' : ''}`}
+                            key={option.label}
+                          >
+                            <input
+                              type="radio"
+                              name={`wk-progress-${problem.alias}`}
+                              checked={mark.progress === option.value}
+                              disabled={disabled}
+                              onChange={() => setProgress(problem.alias, option.value)}
+                            />
+                            <span>{option.label}</span>
+                          </label>
+                        ))}
+                      </span>
+                      <button
+                        type="button"
+                        className={`wk-mark__more${open ? ' is-open' : ''}`}
+                        aria-expanded={open}
+                        aria-controls={extrasId}
+                        aria-label={`${problem.alias} 更多标记`}
+                        onClick={() => toggleExtras(problem.alias)}
+                      >
+                        {open ? '收起' : '更多'}
+                        <Icon id="i-chev" />
+                      </button>
+                    </span>
+                    <div className="wk-mark__extras" id={extrasId} hidden={!open}>
+                      <button
+                        type="button"
+                        className={`wk-mark__star${mark.star ? ' is-on' : ''}`}
+                        aria-pressed={mark.star}
+                        disabled={disabled}
+                        title={mark.star ? '取消重点' : '标为重点'}
+                        onClick={() => toggleStar(problem.alias)}
+                      >
+                        <Icon id="i-star" />
+                        重点
+                      </button>
+                      {mark.tags.length > 0 ? (
+                        <span className="wk-mark__tags">
+                          {mark.tags.map((tag) => (
+                            <span className="wk-chip" key={tag}>
+                              {tag}
+                              <button
+                                className="wk-chip__x"
+                                aria-label={`移除标签 ${tag}`}
+                                disabled={disabled}
+                                onClick={() => removeTag(problem.alias, tag)}
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </span>
+                      ) : null}
+                      <span className="wk-mark__tagform">
+                        <input
+                          className="wk-labelinput wk-mark__taginput"
+                          value={draft}
+                          placeholder={full ? '最多 8 个' : '加标签（如 dp / 字符串）'}
+                          maxLength={PROBLEM_TAG_LEN_MAX}
+                          list="wk-problem-tag-suggest"
+                          disabled={disabled || full}
+                          aria-label={`${problem.alias} 加标签`}
+                          onChange={(e) => setTagDrafts((d) => ({ ...d, [problem.alias]: e.target.value }))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              // 输入法选词的回车不算提交
+                              if (e.nativeEvent.isComposing) return;
+                              e.preventDefault();
+                              addTag(problem.alias);
+                            }
+                          }}
+                        />
                         <button
-                          className="wk-chip__x"
-                          aria-label={`移除标签 ${tag}`}
-                          disabled={disabled}
-                          onClick={() => removeTag(problem.alias, tag)}
+                          type="button"
+                          className="btn btn--xs"
+                          disabled={disabled || full || draft.trim() === ''}
+                          onClick={() => addTag(problem.alias)}
                         >
-                          ×
+                          添加
                         </button>
                       </span>
-                    ))}
-                    <input
-                      className="wk-labelinput wk-mark__taginput"
-                      value={Object.hasOwn(tagDrafts, problem.alias) ? (tagDrafts[problem.alias] ?? '') : ''}
-                      placeholder={mark.tags.length >= PROBLEM_TAGS_MAX ? '最多 8 个' : '加标签（如 dp / 字符串）'}
-                      maxLength={PROBLEM_TAG_LEN_MAX}
-                      list="wk-problem-tag-suggest"
-                      disabled={disabled || mark.tags.length >= PROBLEM_TAGS_MAX}
-                      aria-label={`${problem.alias} 加标签`}
-                      onChange={(e) => setTagDrafts((d) => ({ ...d, [problem.alias]: e.target.value }))}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          // 输入法选词的回车不算提交
-                          if (e.nativeEvent.isComposing) return;
-                          e.preventDefault();
-                          addTag(problem.alias);
-                        }
-                      }}
-                    />
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </>
       )}
 

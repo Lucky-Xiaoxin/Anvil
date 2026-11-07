@@ -71,12 +71,14 @@ function reasonOf(err: unknown): string {
   return String(err);
 }
 
-/** CF 偶尔回 HTML（网关 / 维护页）：转成信封交给上层报错，不让 JSON.parse 抛穿 */
+/** CF 偶尔回 HTML（网关 / 维护页 / 限流页）：转成信封交给上层，按瞬态走重试，不让 JSON.parse 抛穿 */
+const BAD_JSON_COMMENT = '返回的不是 JSON';
+
 function readJson(text: string): unknown {
   try {
     return JSON.parse(text);
   } catch {
-    return { status: 'BAD_JSON', comment: '返回的不是 JSON' };
+    return { status: 'BAD_JSON', comment: BAD_JSON_COMMENT };
   }
 }
 
@@ -121,7 +123,9 @@ export class CfClient {
           if (env.data.status === 'OK') return env.data.result as T;
           const comment = env.data.comment || '未知原因';
           if (/not found/i.test(comment)) throw new CfError('not-found', comment, `method=${method}`);
-          if (!TRANSIENT.test(comment)) throw new CfError('failed', comment, `method=${method}`);
+          // BAD_JSON（HTML 网关 / 限流页）与限速同样属于瞬态：2026-11-08 前它一击即溃不重试，
+          // 用户连续手点也无济于事——把它纳入指数退避
+          if (!TRANSIENT.test(comment) && comment !== BAD_JSON_COMMENT) throw new CfError('failed', comment, `method=${method}`);
           transient = comment;
         }
       } catch (err) {

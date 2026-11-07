@@ -158,7 +158,7 @@ describe('GET /api/status', () => {
   });
 
   it('缓存过期 = stale；最近一次失败 = down；两源各算各的', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     setSyncState(db, syncKey('cf', 'last_sync_at'), String(NOW - STALE_AFTER_SECONDS - 60));
     setSyncState(db, syncKey('at', 'last_sync_at'), String(NOW - 60));
     setSyncState(db, syncKey('at', 'last_error'), 'AtCoder Problems 暂不可达（503）');
@@ -171,7 +171,7 @@ describe('GET /api/status', () => {
   });
 
   it('成功后清掉旧的失败原因：last_error 空串不算 down', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     setSyncState(db, syncKey('cf', 'last_sync_at'), String(NOW));
     setSyncState(db, syncKey('cf', 'last_error'), '');
     const body = (await get('/api/status')).json();
@@ -181,7 +181,7 @@ describe('GET /api/status', () => {
   });
 
   it('非 rated 场不充当 tab 上的当前 rating', async () => {
-    await boot({ handles: { cf: '', at: 'bob' } });
+    await boot({ handles: { cf: '', at: 'chokudai' } });
     upsertRatingHistory(db, 'at', [
       { contestKey: 'abc300', contestName: 'ABC 300', rank: 1, oldRating: 1345, newRating: 1345, isRated: false, performance: null, updatedTs: NOW },
       { contestKey: 'abc299', contestName: 'ABC 299', rank: 1, oldRating: 1200, newRating: 1345, isRated: true, performance: 1400, updatedTs: NOW - 86400 },
@@ -197,27 +197,27 @@ describe('GET /api/status', () => {
 describe('POST /api/config 分源校验', () => {
   it('只带 atHandle：只打 AT 的校验，不碰 CF', async () => {
     await boot({ handles: { cf: 'alice', at: '' } });
-    const res = await post('/api/config', { atHandle: 'bob' });
+    const res = await post('/api/config', { atHandle: 'chokudai' });
     expect(res.statusCode).toBe(200);
-    expect(at.checks).toEqual(['bob']);
+    expect(at.checks).toEqual(['chokudai']);
     expect(cf.checks).toEqual([]);
-    expect(handles).toEqual({ cf: 'alice', at: 'bob' });
+    expect(handles).toEqual({ cf: 'alice', at: 'chokudai' });
     expect(res.json().sources.at.configured).toBe(true);
     db.close();
   });
 
   it('两个都带：各校验各的，各自落自己的键', async () => {
     await boot();
-    const res = await post('/api/config', { cfHandle: 'alice', atHandle: 'bob' });
+    const res = await post('/api/config', { cfHandle: 'alice', atHandle: 'chokudai' });
     expect(res.statusCode).toBe(200);
     expect(cf.checks).toEqual(['alice']);
-    expect(at.checks).toEqual(['bob']);
-    expect(handles).toEqual({ cf: 'alice', at: 'bob' });
+    expect(at.checks).toEqual(['chokudai']);
+    expect(handles).toEqual({ cf: 'alice', at: 'chokudai' });
     db.close();
   });
 
   it('handle 没变就不再打上游（省一次请求，也别把「没改」当成校验）', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     const res = await post('/api/config', { cfHandle: 'alice' });
     expect(res.statusCode).toBe(200);
     expect(cf.checks).toEqual([]);
@@ -236,7 +236,7 @@ describe('POST /api/config 分源校验', () => {
 
   it('上游不在线 → 502 unavailable', async () => {
     await boot({ atCheck: { ok: false, kind: 'unavailable', message: '已退避重试 2 次' } });
-    const res = await post('/api/config', { atHandle: 'bob' });
+    const res = await post('/api/config', { atHandle: 'chokudai' });
     expect(res.statusCode).toBe(502);
     expect(res.json().error.kind).toBe('unavailable');
     db.close();
@@ -259,7 +259,7 @@ describe('POST /api/config 分源校验', () => {
   });
 
   it('某源正在同步 → 只有换那个源的 handle 被挡（409），另一源照改', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' }, hangAt: true });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' }, hangAt: true });
     await post('/api/sync', { source: 'at' });
     const blocked = await post('/api/config', { atHandle: 'someoneElse' });
     expect(blocked.statusCode).toBe(409);
@@ -273,7 +273,7 @@ describe('POST /api/config 分源校验', () => {
 
 describe('POST /api/sync 按源起跑', () => {
   it('缺省同步 CF；带 source 同步那个源；返回两源快照', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     const res = await post('/api/sync');
     expect(res.statusCode).toBe(202);
     expect(cf.syncs).toEqual(['alice']);
@@ -281,7 +281,7 @@ describe('POST /api/sync 按源起跑', () => {
 
     const atRes = await post('/api/sync', { source: 'at' });
     expect(atRes.statusCode).toBe(202);
-    expect(at.syncs).toEqual(['bob']);
+    expect(at.syncs).toEqual(['chokudai']);
     db.close();
   });
 
@@ -295,13 +295,13 @@ describe('POST /api/sync 按源起跑', () => {
   });
 
   it('source 乱给 → 400', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     expect((await post('/api/sync', { source: 'xcpc' })).statusCode).toBe(400);
     db.close();
   });
 
   it('起跑后 /api/sync/state 分源给进度，AT 那侧不带 pages / offsite', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' }, hangAt: true });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' }, hangAt: true });
     await post('/api/sync', { source: 'at' });
     const state = (await get('/api/sync/state')).json();
     expect(state.at.phase).toBe('fetching');
@@ -316,7 +316,7 @@ describe('POST /api/sync 按源起跑', () => {
 
 describe('GET /api/dashboard 按源寻址', () => {
   it('缺省给 CF，?source=at 给 AT', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     insertSubmissions(db, 'cf', [subRow(1, 'cf:2268:A')]);
     insertSubmissions(db, 'at', [subRow(1, 'at:abc300_a')]);
     const cfBody = (await get('/api/dashboard')).json();
@@ -346,11 +346,11 @@ describe('GET /api/dashboard 按源寻址', () => {
 
 describe('换 handle 后的归属', () => {
   it('CF 的归属标记不写进 AT 那侧', async () => {
-    await boot({ handles: { cf: 'alice', at: 'bob' } });
+    await boot({ handles: { cf: 'alice', at: 'chokudai' } });
     setMeta(db, handleMetaKey('cf'), 'alice');
     const body = (await get('/api/status')).json();
     expect(body.sources.at.configured).toBe(true);
-    expect(body.sources.at.handle).toBe('bob');
+    expect(body.sources.at.handle).toBe('chokudai');
     db.close();
   });
 });

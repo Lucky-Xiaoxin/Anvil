@@ -5,7 +5,13 @@ import {
   dayKeyOf,
   sourceParentPath,
 } from '@anvil/shared';
-import type { ProblemMarksProblem, WorkKind, WorkObjectDto } from '@anvil/shared';
+import type {
+  ProblemMarkInput,
+  ProblemMarkProgress,
+  ProblemMarksProblem,
+  WorkKind,
+  WorkObjectDto,
+} from '@anvil/shared';
 
 export const KIND_NAME: Record<WorkKind, string> = {
   contest: '比赛',
@@ -427,6 +433,54 @@ export function isoDate(iso: string): string {
 export function workDateLabel(obj: WorkObjectDto, mode: 'created' | 'modified'): string {
   if (mode === 'modified' && obj.contentMtime !== undefined) return dayKeyOf(obj.contentMtime);
   return isoDate(obj.createdAt);
+}
+
+/* ---------- 题目标记筛选（33 §3：只看进度；星标 / 标签与进度相互独立） ---------- */
+
+export type ProblemMarksFilter = 'all' | 'unmarked' | 'todo';
+
+export const PROBLEM_MARKS_FILTERS: readonly ProblemMarksFilter[] = ['all', 'unmarked', 'todo'];
+
+export const PROBLEM_MARKS_FILTER_NAME: Record<ProblemMarksFilter, string> = {
+  all: '全部',
+  unmarked: '未标记',
+  todo: '待补题',
+};
+
+/** 题目的进度口径：不在快照里的 alias 一律按未标记处理；原型链上的键不算条目 */
+function progressOfAlias(marks: Readonly<Record<string, ProblemMarkInput>>, alias: string): ProblemMarkProgress | null {
+  const mark = Object.hasOwn(marks, alias) ? marks[alias] : undefined;
+  return mark?.progress ?? null;
+}
+
+export function problemMarkFilterMatches(progress: ProblemMarkProgress | null, filter: ProblemMarksFilter): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'unmarked') return progress === null;
+  return progress === 'todo';
+}
+
+/** 筛选只按进度分档：只有星标 / 只有标签、进度为空的题仍属未标记（33 §3） */
+export function filterProblemsByMarks(
+  problems: readonly ProblemMarksProblem[],
+  marks: Readonly<Record<string, ProblemMarkInput>>,
+  filter: ProblemMarksFilter,
+): ProblemMarksProblem[] {
+  if (filter === 'all') return [...problems];
+  return problems.filter((problem) => problemMarkFilterMatches(progressOfAlias(marks, problem.alias), filter));
+}
+
+/** 胶囊上的计数：all = 题目数，与筛选结果同口径；清单外的标记条目不参与 */
+export function problemMarksFilterCounts(
+  problems: readonly ProblemMarksProblem[],
+  marks: Readonly<Record<string, ProblemMarkInput>>,
+): Record<ProblemMarksFilter, number> {
+  const counts: Record<ProblemMarksFilter, number> = { all: problems.length, unmarked: 0, todo: 0 };
+  for (const problem of problems) {
+    const progress = progressOfAlias(marks, problem.alias);
+    if (problemMarkFilterMatches(progress, 'unmarked')) counts.unmarked += 1;
+    if (problemMarkFilterMatches(progress, 'todo')) counts.todo += 1;
+  }
+  return counts;
 }
 
 function fallbackAlias(index: number, used: ReadonlySet<string>): string {

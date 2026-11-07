@@ -196,6 +196,15 @@ export function registerWorkRoutes(app: FastifyInstance, work: WorkService): voi
     }
   });
 
+  // 首页「最近保存的比赛」：只读汇总，不建对象、不写档、不扫上游，也不额外触发 rescan
+  app.get('/api/work/recent-contest', async (_request, reply) => {
+    try {
+      return work.recentContest();
+    } catch (err) {
+      return sendWorkError(reply, err);
+    }
+  });
+
   app.get('/api/work/object', async (request, reply) => {
     const parsed = objectQuery.safeParse(request.query ?? {});
     if (!parsed.success) return invalid(reply, '缺少对象 id');

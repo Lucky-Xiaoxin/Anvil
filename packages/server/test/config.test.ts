@@ -21,9 +21,9 @@ describe('vault/config.json 读不懂时不崩', () => {
   });
 
   it('切片 2 新增的 atHandle：缺省补空串，带了就原样读', () => {
-    expect(parseConfig('{"cfHandle":"a","atHandle":"bob"}')).toEqual({
+    expect(parseConfig('{"cfHandle":"a","atHandle":"chokudai"}')).toEqual({
       cfHandle: 'a',
-      atHandle: 'bob',
+      atHandle: 'chokudai',
       port: 7788,
       xcpcPlayerKey: '',
       workspaceRoot: '',

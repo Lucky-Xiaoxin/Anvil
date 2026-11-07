@@ -3,6 +3,10 @@
  * 同一张榜上区分「当前练习 / 查看历史 / 编辑历史 / 查看终榜」，历史只读、当前草稿单键保存。
  *
  * 走钟每秒一次，但**榜只在分钟滚过的那一刻重建**（§4 性能口径）；行组件 memo 化。
+ *
+ * 榜体是一张 roving-tabindex 网格：整张榜对外只有**一个** Tab 落点（当前焦点格），方向键在格间移动、
+ * Enter/空格开弹层、Esc 关层并把焦点还给原来那格。焦点身份是 `{ti, p}`（`p=-1` 队伍列），重建后由
+ * `board-focus.ts` 的纯函数解释到新榜上，行组件只多收一个「当前列或 null」，所以一次移动只重渲两行。
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ArenaRecord, ArenaRecordResult, ArenaLegacyRecordDto } from '@anvil/shared';
@@ -45,6 +49,7 @@ import {
 import type { LeafRow } from './catalog.ts';
 import { GhostPanel } from './GhostPanel.tsx';
 import { Popover, PopShell, resClass, type Anchor } from './pops.tsx';
+import { TEAM_COL, moveFocus, resolveFocus, sameFocus, type BoardFocus, type BoardGrid, type MoveDir } from './board-focus.ts';
 import { SaveDiscardSlider } from './SaveDiscardSlider.tsx';
 import {
   applySaveSuccess,
@@ -130,10 +135,14 @@ interface LegacyConfirmState {
   after: 'edit' | 'reload';
 }
 
+/**
+ * 弹层状态。`origin` = 这层是从榜上哪一格打开的（键盘导航的还焦目标）；
+ * 从顶栏菜单打开的幽灵面板没有格子来源，置 null，关闭时不动焦点。
+ */
 type Pop =
-  | { anchor: Anchor; kind: 'sub'; ti: number; p: number }
-  | { anchor: Anchor; kind: 'team'; ti: number }
-  | { anchor: Anchor; kind: 'ghost' };
+  | { anchor: Anchor; kind: 'sub'; ti: number; p: number; origin: BoardFocus | null }
+  | { anchor: Anchor; kind: 'team'; ti: number; origin: BoardFocus | null }
+  | { anchor: Anchor; kind: 'ghost'; origin: null };
 
 /** 保存成功后的顶层提示（docs/contracts/30 §6.1）：不阻塞、不自动跳转 */
 type MarksPrompt =
@@ -157,6 +166,26 @@ const ghostSig = (g: GhostData | null): string =>
 
 const isUnknownError = (err: unknown): boolean =>
   err instanceof ApiError && (err.kind === 'timeout' || err.kind === 'offline' || err.kind === 'aborted');
+
+/** 榜里格子的地标：`data-ti`（队伍序号，幽灵 = -1）+ `data-p`（-1 = 队伍列，≥0 = 第 p 题） */
+const CELL_SELECTOR = '[data-ti][data-p]';
+
+/** 空榜时 `rows` 保持同一引用，别让焦点 effect 每次渲染都跑一遍 */
+const NO_ROWS: readonly number[] = [];
+
+/** 键盘 → 方向语义（Enter / 空格不在这里：原生 button 自己会变点击） */
+const KEY_DIR: Readonly<Record<string, MoveDir>> = {
+  ArrowLeft: 'left',
+  ArrowRight: 'right',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  Home: 'home',
+  End: 'end',
+};
+
+/** 焦点身份 → 榜里那个格子（找不到 = 行 / 列已经不在当前榜上） */
+const cellOf = (box: HTMLElement, f: BoardFocus): HTMLElement | null =>
+  box.querySelector<HTMLElement>(`[data-ti="${f.ti}"][data-p="${f.p}"]`);
 
 export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHistory = false, onDraftChanged }: Props) {
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
@@ -184,6 +213,20 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
   const [pop, setPop] = useState<Pop | null>(null);
   const boardBox = useRef<HTMLDivElement | null>(null);
   const topbarRef = useRef<HTMLDivElement | null>(null);
+  /*
+   * ---------- 榜体键盘导航（roving tabindex：整张榜只有一个 Tab 落点）----------
+   * `focus` 是"选中身份"`{ti, p}`，不是 DOM 引用：榜每分钟重建、随时可能重排 / 过滤，
+   * 身份由 `board-focus.ts` 解释到新榜上，实际焦点再由下面的同步 effect 补到对应格子上。
+   */
+  const [focus, setFocus] = useState<BoardFocus | null>(null);
+  const focusRef = useRef<BoardFocus | null>(null);
+  focusRef.current = focus;
+  /** 焦点当前是否在榜体内：false 时绝不把焦点从工具栏 / 别的视图抢回来 */
+  const focusInBoard = useRef(false);
+  /** 下一次同步允许滚动定位（键盘导航 = true，重建还原 = false） */
+  const focusScroll = useRef(false);
+  /** 上一个弹层（关闭时从它的 `origin` 还焦） */
+  const prevPop = useRef<Pop | null>(null);
   const { show, hide } = useTip();
 
   const [saveBusy, setSaveBusy] = useState(false);
@@ -1045,14 +1088,19 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
     return () => window.removeEventListener('keydown', onKey);
   }, [pop]);
 
-  const openCellPop = useCallback((ev: React.MouseEvent, ti: number, p: number): void => {
-    const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
-    setPop({ kind: 'sub', ti, p, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
+  /*
+   * 开层只认元素，不认鼠标事件：键盘（原生 button 变出来的 click）与鼠标走同一条路，
+   * 锚点都取自那一格自己的矩形，`origin` 记下"从哪格开的"，关闭时原样还焦。
+   */
+  const openCellPop = useCallback((el: HTMLElement, ti: number, p: number): void => {
+    const r = el.getBoundingClientRect();
+    setPop({ kind: 'sub', ti, p, origin: { ti, p }, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
   }, []);
-  const openTeamPop = useCallback((ev: React.MouseEvent, ti: number): void => {
-    const r = (ev.currentTarget as HTMLElement).closest('.brow')?.getBoundingClientRect();
-    if (r === undefined) return;
-    setPop({ kind: 'team', ti, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
+  const openTeamPop = useCallback((el: HTMLElement, ti: number): void => {
+    // 队伍弹层锚在整行上（沿用稿内落点）：从队名列按钮或行空白处点进来都量同一只 `.brow`
+    const box = el.closest<HTMLElement>('.brow') ?? el;
+    const r = box.getBoundingClientRect();
+    setPop({ kind: 'team', ti, origin: { ti, p: TEAM_COL }, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
   }, []);
 
   /* 所有 hook 必须在提前 return 之前：榜的 useMemo 不能跟着“是否 ready”改变调用顺序 */
@@ -1074,6 +1122,85 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [readyModel, minuteKey],
   );
+
+  /*
+   * ---------- 榜体焦点（下列 hook 同样必须排在提前 return 之前）----------
+   * 当前显示顺序：`board` 只在分钟滚过时换引用，所以这份 `rows` 每分钟算一次，不是每秒。
+   */
+  const boardGrid: BoardGrid = useMemo(
+    () => ({ rows: boardMaybe === null ? NO_ROWS : boardMaybe.rows.map((r) => r.ti), cols: readyModel?.problems.length ?? 0 }),
+    [boardMaybe, readyModel],
+  );
+
+  /* 重建 / 过滤 / 排序后解释焦点：行还在就保住那一行，行没了退到第一条还在的行，空榜就整个不留焦点 */
+  useEffect(() => {
+    setFocus((prev) => resolveFocus(boardGrid, prev));
+  }, [boardGrid]);
+
+  /*
+   * 把"选中身份"落到真实焦点上：只在焦点本来就待在榜里时动手 —— 重建后 React 挪动 DOM 节点、
+   * 行列夹位、还焦路径都走这里，绝不会把焦点从工具栏 / 时间轴 / 别的视图抢进榜里。
+   */
+  useEffect(() => {
+    const scroll = focusScroll.current;
+    focusScroll.current = false;
+    const box = boardBox.current;
+    if (box === null || !focusInBoard.current || focus === null) return;
+    const el = cellOf(box, focus);
+    if (el === null || document.activeElement === el) return;
+    el.focus({ preventScroll: true });
+    // 键盘导航要让新格子进视野（含榜体自己的横向滚动）；重建还原则原地不动
+    if (scroll) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  });
+
+  /* 弹层从"有"到"无"：把焦点还给当初那一格（`preventScroll` —— 还焦不该推滚动位置） */
+  useEffect(() => {
+    const before = prevPop.current;
+    prevPop.current = pop;
+    if (pop !== null || before === null) return;
+    const box = boardBox.current;
+    if (box === null) return;
+    // 从顶栏菜单开的幽灵面板没有格子来源（origin=null），不动别人的焦点
+    const origin = before.origin;
+    if (origin === null) return;
+    // 格子在弹层开着的时候消失了（行被过滤掉 / 分钟重建）：退到当前选中的那一格，别让焦点掉回 body
+    const fallback = focusRef.current === null ? null : cellOf(box, focusRef.current);
+    const el = cellOf(box, origin) ?? fallback;
+    if (el === null) return;
+    el.focus({ preventScroll: true });
+  }, [pop]);
+
+  /** 方向键 / Home / End：算出新身份交给 state，真实焦点由上面的 effect 补，格子自己不带 onClick 分支 */
+  const onBoardKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>): void => {
+      const dir = KEY_DIR[e.key];
+      if (dir === undefined) return;
+      const el = (e.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+      if (el === null) return;
+      const from: BoardFocus = { ti: Number(el.dataset.ti), p: Number(el.dataset.p) };
+      e.preventDefault(); // 网格内部方向键不滚页面；Home/End 不去文档头尾
+      const next = moveFocus(boardGrid, from, dir, e.ctrlKey);
+      if (next === null || sameFocus(next, from)) return;
+      focusInBoard.current = true;
+      focusScroll.current = true;
+      setFocus(next);
+    },
+    [boardGrid],
+  );
+
+  /** 真实焦点落在哪格，选中身份就是哪格（鼠标点格子、还焦、Tab 进来都走这条） */
+  const onBoardFocus = useCallback((e: React.FocusEvent<HTMLDivElement>): void => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>(CELL_SELECTOR);
+    if (el === null) return;
+    focusInBoard.current = true;
+    const next: BoardFocus = { ti: Number(el.dataset.ti), p: Number(el.dataset.p) };
+    setFocus((prev) => (sameFocus(prev, next) ? prev : next));
+  }, []);
+
+  const onBoardBlur = useCallback((e: React.FocusEvent<HTMLDivElement>): void => {
+    const to = e.relatedTarget as HTMLElement | null;
+    if (to === null || !e.currentTarget.contains(to)) focusInBoard.current = false;
+  }, []);
 
   if (load.kind === 'error') {
     return (
@@ -1189,7 +1316,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
     const el = topbarRef.current?.querySelector<HTMLElement>('.arena-more__trigger') ?? null;
     const r = el?.getBoundingClientRect();
     if (r === undefined || r === null) return;
-    setPop({ kind: 'ghost', anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
+    setPop({ kind: 'ghost', origin: null, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
   };
 
   const menuItems: ArenaMenuItem[] = [];
@@ -1642,10 +1769,21 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
               </div>
             ) : null}
 
-            <div className="boardscroll" ref={boardBox} onMouseLeave={hide}>
-              <div className="brow bhead">
+            <div
+              className="boardscroll"
+              ref={boardBox}
+              role="grid"
+              aria-label="回放榜"
+              aria-describedby="arena-keyhint"
+              onMouseLeave={hide}
+              onKeyDown={onBoardKeyDown}
+              onFocus={onBoardFocus}
+              onBlur={onBoardBlur}
+            >
+              <div className="brow bhead" role="row">
                 <div
                   className="h-r"
+                  role="columnheader"
                   onMouseEnter={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     show({
@@ -1663,6 +1801,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
                 </div>
                 <div
                   className="h-s"
+                  role="columnheader"
                   onMouseEnter={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     show({ x: r.left + 20, y: r.bottom, below: true, date: '学校排名 S#', value: '每校头队', zero: false, sub: ['只标各校最好的一支', '打星队不计'] });
@@ -1670,10 +1809,11 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
                 >
                   S#
                 </div>
-                <div className="h-org">Organization</div>
-                <div className="h-team">Team</div>
+                <div className="h-org" role="columnheader">Organization</div>
+                <div className="h-team" role="columnheader">Team</div>
                 <div
                   className="h-sol"
+                  role="columnheader"
                   onMouseEnter={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     show({ x: r.left + 24, y: r.bottom, below: true, date: '过题 Slv', value: frozen ? `定格在 ${freezeLabel}` : '实时', zero: false, sub: [`封榜段内定格在 ${freezeLabel}`] });
@@ -1683,6 +1823,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
                 </div>
                 <div
                   className="h-pen"
+                  role="columnheader"
                   onMouseEnter={(e) => {
                     const r = e.currentTarget.getBoundingClientRect();
                     show({ x: r.left + 30, y: r.bottom, below: true, date: '罚时 Pen', value: 'AC 分钟 + 20 × 失败', zero: false, sub: ['过题前的失败次数', 'CE 不罚'] });
@@ -1696,13 +1837,27 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
               </div>
 
               {board.rows.map((r) => (
-                <BoardRowView key={r.ti} row={r} team={r.ghost ? board.ghostTeam! : model.teams[r.ti]!} problems={model.problems} model={model} onCell={openCellPop} onTeam={openTeamPop} />
+                <BoardRowView
+                  key={r.ti}
+                  row={r}
+                  team={r.ghost ? board.ghostTeam! : model.teams[r.ti]!}
+                  problems={model.problems}
+                  model={model}
+                  focusCol={focus !== null && focus.ti === r.ti ? focus.p : null}
+                  onCell={openCellPop}
+                  onTeam={openTeamPop}
+                />
               ))}
             </div>
 
             <div className="board__foot">
               <span>
                 榜上 <b>{teamCount}</b> 队 · 累计过题 <b>{board.solvedTotal}</b>
+              </span>
+              {/* 键盘操作口径常驻在榜脚：`id` 给上面的 grid 做 aria-describedby，读屏进格子就念到。
+                  窄屏的横向滚动由原生滚动条自己说话 —— 会不会滚跟题目数有关，写死一句反而失真 */}
+              <span className="arena-keyhint" id="arena-keyhint">
+                方向键移动 · Enter/空格查看 · Esc 返回
               </span>
               <span className="spacer" />
               <span className="key key--head">
@@ -1914,6 +2069,8 @@ const ProblemHead = memo(function ProblemHead({
   return (
     <div
       className={`ph is-${state}`}
+      role="columnheader"
+      aria-label={`${problem.alias ?? String.fromCharCode(65 + index)} 题 ${problem.title ?? ''} · ${col.ac} / ${rows} 队过`}
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
         show({
@@ -1941,16 +2098,22 @@ interface RowProps {
   team: TeamModel;
   problems: ContestModel['problems'];
   model: ContestModel;
-  onCell: (ev: React.MouseEvent, ti: number, p: number) => void;
-  onTeam: (ev: React.MouseEvent, ti: number) => void;
+  /**
+   * 这一行是不是焦点行 —— `null` = 不是，否则 = 当前焦点列（`-1` 队伍列 / `≥0` 第 p 题）。
+   * 只传这一个数（不传焦点对象）：一次方向键移动只让旧、新两行过 memo，几百行的榜不动。
+   */
+  focusCol: number | null;
+  onCell: (el: HTMLElement, ti: number, p: number) => void;
+  onTeam: (el: HTMLElement, ti: number) => void;
 }
 
 const BoardRowView = memo(function BoardRowView(props: RowProps) {
-  const { row, team, problems, model, onCell, onTeam } = props;
+  const { row, team, problems, model, focusCol, onCell, onTeam } = props;
   const { show, hide } = useTip();
+  const ti = team.ti;
 
   const cellNodes = row.cells.map((c, p) => (
-    <CellView key={p} cell={c} ti={team.ti} p={p} problem={problems[p] ?? {}} row={row} team={team} freezeStart={model.freezeStart} approx={model.approx} onCell={onCell} />
+    <CellView key={p} cell={c} ti={ti} p={p} problem={problems[p] ?? {}} row={row} team={team} approx={model.approx} focused={focusCol === p} onCell={onCell} />
   ));
 
   const teamTip = (e: React.MouseEvent): void => {
@@ -1967,29 +2130,47 @@ const BoardRowView = memo(function BoardRowView(props: RowProps) {
     });
   };
 
+  const who = team.name === '' ? team.org || '队伍信息未收录' : team.name;
+
   return (
     <div
       className={`brow brow--body${row.medal ? ` m-${row.medal}` : ''}${row.star ? ' is-star' : ''}${row.ghost ? ' is-ghost' : ''}`}
+      role="row"
       onMouseEnter={teamTip}
       onMouseLeave={hide}
       onClick={(e) => {
+        // 鼠标点行上任意处仍开队伍弹层（原口径）；队名列与格子自己 stopPropagation，不会二次触发
         hide();
-        onTeam(e, team.ti);
+        onTeam(e.currentTarget, ti);
       }}
     >
-      <div className="c-r">
+      <div className="c-r" role="gridcell">
         <b>{row.rank}</b>
       </div>
-      <div className="c-s">{row.srank === '' ? '' : <b>{row.srank}</b>}</div>
-      <div className="c-org">{team.org}</div>
-      <div className="c-team">
+      <div className="c-s" role="gridcell">{row.srank === '' ? '' : <b>{row.srank}</b>}</div>
+      <div className="c-org" role="gridcell">{team.org}</div>
+      {/* 队名列是原生 button：Enter / 空格浏览器自己变点击，role 改成 gridcell 只为网格语义，不改行为 */}
+      <button
+        type="button"
+        className="c-team"
+        role="gridcell"
+        data-ti={ti}
+        data-p={TEAM_COL}
+        tabIndex={focusCol === TEAM_COL ? 0 : -1}
+        aria-label={`第 ${row.rank} 名 · ${who} · 查看队伍`}
+        onClick={(e) => {
+          e.stopPropagation();
+          hide();
+          onTeam(e.currentTarget, ti);
+        }}
+      >
         <span className={`c-team__n${row.ghost ? ' is-you' : ''}`}>{team.name}</span>
         {row.star ? <span className="c-team__star">★</span> : null}
-      </div>
-      <div className="c-sol">
+      </button>
+      <div className="c-sol" role="gridcell">
         <b>{row.solved}</b>
       </div>
-      <div className="c-pen">
+      <div className="c-pen" role="gridcell">
         <b>{row.pen}</b>
       </div>
       {cellNodes}
@@ -1997,51 +2178,31 @@ const BoardRowView = memo(function BoardRowView(props: RowProps) {
   );
 });
 
-const CellView = memo(function CellView({
-  cell,
-  ti,
-  p,
-  problem,
-  row,
-  team,
-  freezeStart,
-  approx,
-  onCell,
-}: {
+interface CellProps {
   cell: Cell;
   ti: number;
   p: number;
   problem: ContestModel['problems'][number];
   row: BoardRow;
   team: TeamModel;
-  freezeStart: number;
   approx: boolean;
-  onCell: (ev: React.MouseEvent, ti: number, p: number) => void;
-}) {
+  /** 这一格是不是当前焦点格（只有本行是当前行时才可能为 true） */
+  focused: boolean;
+  onCell: (el: HTMLElement, ti: number, p: number) => void;
+}
+
+const CellView = memo(function CellView({ cell, ti, p, problem, row, team, approx, focused, onCell }: CellProps) {
   const { show, hide } = useTip();
-  if (cell.st === 'none') {
-    // 幽灵行空格子：这一题在当前回放时刻还没有可显示的提交，悬停直说，不再借行级提示「点击看每题逐发」；真队空格子维持无提示
-    if (!row.ghost) return <div className="pcell is-none" />;
-    return (
-      <div
-        className="pcell is-none"
-        onMouseEnter={(e) => {
-          const r = e.currentTarget.getBoundingClientRect();
-          show({
-            x: r.left + r.width / 2,
-            y: r.top,
-            date: `${problem.alias ?? ''} · ${problem.title ?? ''}`,
-            value: '暂无提交',
-            zero: true,
-            sub: ['我的成绩这一题在当前回放时刻还没有可显示的提交'],
-          });
-        }}
-        onMouseLeave={hide}
-      />
-    );
-  }
+  /*
+   * 空格子不再是一块"什么也不是"的 div：网格要每行同列、键盘要能停在任何一格，所以它一样可聚焦、
+   * 一样开 SubPop —— 明细弹层本来就有「本场未提交。」/「本题还没录。」这一档，判名与格子读数不动
+   * （engine 口径不变），只是把已经存在的空态入口暴露给键盘。
+   */
+  const empty = cell.st === 'none';
+  const alias = problem.alias ?? String.fromCharCode(65 + p);
 
   const readout = (): { value: string; cls: string } => {
+    if (empty) return { value: '暂无提交', cls: 'is-zero' };
     if (cell.st === 'ac') return { value: `AC ${minutesOf(cell.t)}′ ×${cell.n}${cell.post ? ' · 封榜后' : ''}`, cls: 'is-ok' };
     if (cell.st === 'fb') return { value: `首杀 ${minutesOf(cell.t)}′${cell.post ? ' · 封榜后' : ''}`, cls: 'is-ok' };
     if (cell.st === 'pen') return { value: `未过 −${cell.n} · 末次 ${minutesOf(cell.t)}′${cell.post ? ' · 封榜后' : ''}`, cls: 'is-bad' };
@@ -2050,30 +2211,39 @@ const CellView = memo(function CellView({
   };
   const tip = readout();
   const sub: string[] = [];
+  if (empty) sub.push(row.ghost ? '我的成绩这一题在当前回放时刻还没有可显示的提交' : '这一题在当前回放时刻还没有提交');
   if (cell.post) sub.push('发生在封榜段 · 不计入定格名次');
   sub.push(`${team.name} · 第 ${row.rank} 名`);
   sub.push(approx ? '点击查看判名与次数' : '点击查看逐次提交');
 
   return (
-    <div
+    <button
+      type="button"
       className={`pcell is-${cell.st} is-hit${cell.post ? ' is-post' : ''}`}
+      role="gridcell"
+      data-ti={ti}
+      data-p={p}
+      tabIndex={focused ? 0 : -1}
+      aria-label={`${alias} 题 · ${tip.value} · 查看明细`}
       onMouseEnter={(e) => {
         const r = e.currentTarget.getBoundingClientRect();
-        show({ x: r.left + r.width / 2, y: r.top, date: `${problem.alias ?? ''} · ${problem.title ?? ''}`, value: tip.value, zero: tip.cls === 'is-zero', valueClass: tip.cls, sub });
+        show({ x: r.left + r.width / 2, y: r.top, date: `${alias} · ${problem.title ?? ''}`, value: tip.value, zero: tip.cls === 'is-zero', valueClass: tip.cls, sub });
       }}
       onMouseLeave={hide}
       onClick={(e) => {
         e.stopPropagation();
         hide();
-        onCell(e, ti, p);
+        onCell(e.currentTarget, ti, p);
       }}
     >
-      <span className="pcell__b">
-        <span className="pcell__t">{minutesOf(cell.t)}</span>
-        <span className="pcell__n">{cell.st === 'ac' ? (cell.n > 1 ? `×${cell.n}` : '') : cell.st === 'fb' ? 'FB' : cell.st === 'pen' ? `−${cell.n}` : cell.st === 'ce' ? 'CE' : `?${cell.n}`}</span>
-        {cell.post ? <i className="pcell__dot" /> : null}
-      </span>
-    </div>
+      {empty ? null : (
+        <span className="pcell__b">
+          <span className="pcell__t">{minutesOf(cell.t)}</span>
+          <span className="pcell__n">{cell.st === 'ac' ? (cell.n > 1 ? `×${cell.n}` : '') : cell.st === 'fb' ? 'FB' : cell.st === 'pen' ? `−${cell.n}` : cell.st === 'ce' ? 'CE' : `?${cell.n}`}</span>
+          {cell.post ? <i className="pcell__dot" /> : null}
+        </span>
+      )}
+    </button>
   );
 });
 

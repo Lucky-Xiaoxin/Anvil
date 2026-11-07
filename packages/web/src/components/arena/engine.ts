@@ -41,7 +41,8 @@ export interface SrkUser {
   name?: SrkText;
   id?: string;
   organization?: SrkText;
-  teamMembers?: { name?: SrkText }[];
+  /** role 实测全库只有 'coach' 一个值（2026-11-07 扫 103 场缓存共 4318 处），其余成员不带 role */
+  teamMembers?: { name?: SrkText; role?: SrkText }[];
   official?: boolean;
 }
 
@@ -490,7 +491,12 @@ export function buildModel(doc: SrkDoc): ContestModel {
       ti,
       name: pickText(user.name),
       org: pickText(user.organization),
-      members: (Array.isArray(user.teamMembers) ? user.teamMembers : []).map((m) => pickText(m?.name)).filter((s) => s !== ''),
+      // 教练不算队员：部分场次名单里带 role:'coach'（2026 深圳 323/326 队、2025 郑州 / 秦皇岛等），
+      // 按标注过滤，不猜「第 4 个人是教练」——没标注的名单原样保留
+      members: (Array.isArray(user.teamMembers) ? user.teamMembers : [])
+        .filter((m) => pickText(m?.role).trim().toLowerCase() !== 'coach')
+        .map((m) => pickText(m?.name))
+        .filter((s) => s !== ''),
       seat: str(user.id),
       star: user.official !== true,
       subs,

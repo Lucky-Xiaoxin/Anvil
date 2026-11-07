@@ -3,6 +3,7 @@
  * 对象口径见 docs/contracts/23 / 26 / 27；题目标记在 problem-marks.ts（docs/contracts/30）。
  */
 import { contestPathOk } from './arena-path.ts';
+import type { ArenaRecordSummaryDto } from './arena-records.ts';
 import type { ProblemMarkSummary, ProblemMarksDto } from './problem-marks.ts';
 import { cleanSourcePath } from './work-import.ts';
 
@@ -111,6 +112,37 @@ export interface WorkTreeDto {
   /** 本工作区所有合法题目标记里用过的标签（去重、最多 200，次数降序再字母序） */
   problemTags: string[];
   trash: WorkTrashDto[];
+}
+
+/* ---------- 首页「最近保存的比赛」（只读汇总，GET /api/work/recent-contest） ---------- */
+
+/**
+ * 一条最近保存：比赛对象 + 该场最近一份可读存档摘要。
+ * 时间口径只认 `record.updatedAt`（保存 / 更新 / 改名会推进它；题目标记、比赛内容文件都不会）。
+ */
+export interface WorkRecentContestEntryDto {
+  contest: WorkObjectDto;
+  record: ArenaRecordSummaryDto;
+}
+
+/** 排序与并列口径（返回体自带，界面与测试共用一份说法，不在 UI 里另写一套） */
+export const WORK_RECENT_CONTEST_RULE = '取未归档比赛的存档 updatedAt 最大值；并列按 contest id 升序、再按 recordId 升序';
+
+/** 主界面快速跳转架最多带几条（含 recent 本身；上限后按同一口径截断） */
+export const WORK_RECENTS_LIMIT = 5;
+
+export interface WorkRecentContestDto {
+  /** null = 活跃比赛里还没有任何可读存档（不等于「没打过」，只等于没有已保存成绩） */
+  recent: WorkRecentContestEntryDto | null;
+  /**
+   * 快速跳转架：同一口径排序后取前 `WORK_RECENTS_LIMIT` 条，**每场比赛只保留最新一份存档**
+   * （同场多档不重复占位）；`recent` 恒为 `recents[0] ?? null`，界面不为它单独再排一次。
+   */
+  recents: WorkRecentContestEntryDto[];
+  /** 某些候选存档读不出来时逐条说明：此时 recent 只是「已知里最近」，不声称全局确定 */
+  warnings: string[];
+  /** 就是 `WORK_RECENT_CONTEST_RULE`：结果怎么定的，随结果一起给出去 */
+  rule: string;
 }
 
 /* ---------- 模板文件（切片 5a.1：详情内联编辑） ---------- */

@@ -14,6 +14,7 @@ import {
   isoDate,
   linkedProblemsetsOf,
   problemsetLinkOf,
+  type ProblemMarksFilter,
 } from './derive.ts';
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   parentTitle: string | null;
   /** 全量对象（活动 + 归档，27 §5.3）：关联比赛选择器与「关联题组」展示统一从这里派生 */
   objects: WorkObjectDto[];
+  /** 深链 `&progress=todo|unmarked` 带的题目标记筛选（33 §6）：null = 用面板默认 */
+  marksFilter?: ProblemMarksFilter | null;
   busy: string | null;
   onRetitle: (title: string) => void;
   onLabels: (labels: string[]) => void;
@@ -212,6 +215,7 @@ export function WorkDetail(props: Props) {
           error={detail.problemMarksError ?? null}
           archived={frozen}
           suggestions={props.problemTags}
+          initialFilter={props.marksFilter ?? undefined}
           onChanged={props.onProblemMarksChanged}
           onUnsavedChange={props.onProblemMarksUnsaved}
         />

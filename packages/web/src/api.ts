@@ -25,6 +25,7 @@ import type {
   WorkKind,
   WorkObjectDetailDto,
   WorkOpenApp,
+  WorkRecentContestDto,
   WorkTemplateFileDto,
   WorkTrashPurgeResult,
   WorkTreeDto,
@@ -152,6 +153,14 @@ export const getWorkTree = (opts: { archived?: boolean; rescan?: boolean; signal
 
 export const initWork = (path: string, confirmExisting = false): Promise<WorkTreeDto> =>
   request<WorkTreeDto>('/api/work/init', post({ path, confirmExisting }), 45_000);
+
+/** 首页「最近保存的比赛」：服务端一次遍历给出全局最近档，前端不发 N 个请求拼 */
+export const getWorkRecentContest = (signal?: AbortSignal): Promise<WorkRecentContestDto> =>
+  request<WorkRecentContestDto>(
+    '/api/work/recent-contest',
+    signal === undefined ? undefined : { signal },
+    30_000,
+  );
 
 export const getWorkObject = (id: string, signal?: AbortSignal): Promise<WorkObjectDetailDto> =>
   request<WorkObjectDetailDto>(

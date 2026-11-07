@@ -1,7 +1,7 @@
 /**
  * XCPC 服务端单测（docs/contracts/14 §7）。一律 mock fetch —— 单测禁止打真实网络（技术锁）。
  * 夹具是示例快照裁剪件：`Sample Player@Sample University` 的 PlayerDetail（skillPanel 已删）+ 同分片里
- * 一条真实的 official:false 打星行。
+ * 一条 official:false 打星行。
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -404,9 +404,9 @@ describe('claim（docs/contracts/14 §4）', () => {
     const db = mem();
     const s = store(db);
     const m = mock(claimRoutes());
-    await m.client.search('sample');              // 暖桶
+    await m.client.search('sample');             // 暖桶
     await claimXcpc(s, m.client, KEY);
-    await m.client.search('sample');              // 缓存已被认领清掉 → 重新打桶
+    await m.client.search('sample');             // 缓存已被认领清掉 → 重新打桶
     expect(m.calls.filter((u) => u === bucketUrl(bucketOf('sample')))).toHaveLength(2);
     db.close();
   });

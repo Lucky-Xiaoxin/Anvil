@@ -305,6 +305,45 @@ describe('模型解析', () => {
     expect(t[4]?.org).toBe('');
   });
 
+  it('队员名单滤掉 role:coach 的教练（2026 深圳 323/326 队带此标注）；不标注的不动', () => {
+    const m = buildModel(
+      fixture({
+        rows: [
+          {
+            // 实测形状（脱敏）：3 选手 + 1 教练，弹层名单只该剩 3 人
+            user: {
+              name: '自造甲队',
+              id: 'A1-05',
+              organization: '自造大学',
+              official: true,
+              teamMembers: [{ name: '选手甲' }, { name: '选手乙' }, { name: '选手丙' }, { name: '教练甲', role: 'coach' }],
+            },
+            statuses: [],
+          },
+          {
+            // 2025 郑州 / 秦皇岛实测形状：4 选手 + 1 教练（5 人名单）
+            user: {
+              name: '五人队',
+              official: true,
+              teamMembers: [
+                { name: '选手一' },
+                { name: '选手二' },
+                { name: '选手三' },
+                { name: '选手四' },
+                { name: '教练甲', role: 'coach' },
+              ],
+            },
+            statuses: [],
+          },
+          { user: { name: '无名单队', official: true }, statuses: [] },
+        ],
+      }),
+    );
+    expect(m.teams[0]?.members).toEqual(['选手甲', '选手乙', '选手丙']);
+    expect(m.teams[1]?.members).toEqual(['选手一', '选手二', '选手三', '选手四']);
+    expect(m.teams[2]?.members).toEqual([]);
+  });
+
   it('contest.title 与队名同一套归一（含只有 en 的形状）', () => {
     expect(buildModel(fixture({ contest: { title: { en: 'Only Latin Title' }, duration: [5, 'h'] } })).title).toBe('Only Latin Title');
     expect(buildModel(fixture({ contest: { title: '字符串标题', duration: [5, 'h'] } })).title).toBe('字符串标题');

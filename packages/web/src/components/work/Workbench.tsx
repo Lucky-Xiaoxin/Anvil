@@ -20,7 +20,7 @@ import { WorkCreate, type WorkDialog } from './WorkCreate.tsx';
 import { WorkDetail } from './WorkDetail.tsx';
 import { WorkImport } from './WorkImport.tsx';
 import { WorkList } from './WorkList.tsx';
-import { KIND_NAME, KIND_ORDER, availableTemplates, defaultDirOf, filterWorkObjects, kindCounts, type WorkSort, type WorkSortKey } from './derive.ts';
+import { KIND_NAME, KIND_ORDER, availableTemplates, defaultDirOf, filterWorkObjects, kindCounts, type ProblemMarksFilter, type WorkSort, type WorkSortKey } from './derive.ts';
 import { importResultSummary } from './import-derive.ts';
 import { createLatestGate } from './latest.ts';
 import { browserStore, loadWorkSort, saveWorkSort, workSortDirHint, workSortDirLabel } from './work-sort.ts';
@@ -33,6 +33,8 @@ interface Notice {
 export interface MasterEntry {
   objectId: string;
   panel: 'problems' | null;
+  /** 深链带的题目标记筛选（33 §6）：只对这次进入的那个对象生效 */
+  marksFilter?: ProblemMarksFilter | null;
 }
 
 interface Props {
@@ -150,6 +152,8 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
   const [sort, setSort] = useState<WorkSort>(() => loadWorkSort(browserStore()));
   useEffect(() => saveWorkSort(browserStore(), sort), [sort]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** 深链带来的题目标记筛选：只绑在那一次进入的对象上，换对象自动失效（33 §6） */
+  const [entryMarksFilter, setEntryMarksFilter] = useState<{ objectId: string; filter: ProblemMarksFilter } | null>(null);
   const [detail, setDetail] = useState<WorkObjectDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   /** 详情请求序号：快速连点两个对象时，只让最后一次响应落地 */
@@ -316,6 +320,8 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
       onEntryConsumed();
       return;
     }
+    // 深链带的题目标记筛选绑到这次进入的对象上；换对象时按 key 自动失效（33 §6）
+    setEntryMarksFilter(entry.marksFilter === null || entry.marksFilter === undefined ? null : { objectId: entry.objectId, filter: entry.marksFilter });
     // 同一个对象已经在看：只定位，不重载详情（重载会卸载面板、丢掉未保存的标记）
     if (entry.objectId === selectedIdRef.current && detailRef.current?.id === entry.objectId) {
       entryHandled.current = entry;
@@ -721,6 +727,7 @@ export function Workbench({ entry, onEntryConsumed }: Props) {
                 parentTitle={parentTitle}
                 objects={allObjects}
                 busy={busy}
+                marksFilter={entryMarksFilter !== null && entryMarksFilter.objectId === detail.id ? entryMarksFilter.filter : null}
                 onRetitle={(title) => {
                   if (detail !== null) void afterMutation('retitle', () => updateWork({ id: detail.id, title }));
                 }}

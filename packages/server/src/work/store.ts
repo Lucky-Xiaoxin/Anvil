@@ -22,6 +22,8 @@ import {
   unregisteredKindHint,
   workIdOk,
   workMetaToJson,
+  WORK_RECENT_CONTEST_RULE,
+  WORK_RECENTS_LIMIT,
   WORK_TEMPLATE_CONTENT_MAX,
   type ArenaRecord,
   type ArenaRecordCreateInput,
@@ -30,6 +32,7 @@ import {
   type ArenaRecordRenameInput,
   type ArenaRecordsListDto,
   type ArenaRecordRestoreResult,
+  type ArenaRecordSummaryDto,
   type ArenaRecordTrashInput,
   type ArenaRecordTrashResult,
   type ArenaRecordUpdateInput,
@@ -49,6 +52,8 @@ import {
   type WorkArenaGhost,
   type WorkObjectDetailDto,
   type WorkObjectDto,
+  type WorkRecentContestDto,
+  type WorkRecentContestEntryDto,
   type WorkScanErrorDto,
   type WorkTemplateFileDto,
   type WorkTemplateSaveInput,
@@ -232,6 +237,8 @@ function joinRel(relDir: string, name: string): string {
 function comparePosix(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/* 「最近」判据原 isMoreRecent 已并入 recentContest 的全序排序（同一口径，测试双向锁定） */
 
 /** 服务端本地日期（与全站时区口径一致，不是比赛日期） */
 function localStamp(date: Date): string {
@@ -423,6 +430,73 @@ export class WorkService {
     const obj = this.contestForArena(idx, arenaPath);
     if (obj === null) return { contestId: null, records: [], legacy: null, errors: [] };
     return scanContestRecords(this.hostOf(idx, obj));
+  }
+
+  /**
+   * 首页「最近保存的比赛」：跨全部活跃比赛取存档 `updatedAt` 最大的一份（只读，不写盘、不出网、不迁移）。
+   * 口径（同 shared 的 WORK_RECENT_CONTEST_RULE，随返回值一起给出）：
+   * - 候选 = `kind=contest` 且带 `links.arenaPath` 且 `effectiveArchived=false` 的对象；
+   *   归档比赛整体跳过，回收站里的比赛 / 存档本来就不进索引，天然排除；
+   * - 时间只认存档自己的 `updatedAt`（创建 / 更新 / 改名会推进；题目标记、比赛内容文件、对象 updatedAt 都不算）；
+   * - 存档清单沿用 `scanContestRecords`：旧 schema 1 的 review 以合法投影计入，旧 live 草稿不算已保存成绩；
+   * - 并列按 contest id 升序、再按 recordId 升序（排序比较器，与原 `isMoreRecent` 同一字面）；
+   * - `recents` = 同一全序下每场取最新一份存档、按 `WORK_RECENTS_LIMIT` 截断；`recent` 恒为 `recents[0] ?? null`；
+   * - 单个候选读不出来只写进 `warnings`，既不整块失败，也不假装全局确定；
+   * - 工作区未配置 / 未初始化照旧抛 `WorkError`，由路由回原有 409 形状。
+   */
+  recentContest(): WorkRecentContestDto {
+    const idx = this.ensureIndex();
+    const warnings: string[] = [];
+    /** 全部可读候选：排序用（at 先算好，避免比较函数里反复 Date.parse） */
+    const pool: { at: number; contestId: string; record: ArenaRecordSummaryDto; entry: WorkRecentContestEntryDto }[] = [];
+
+    const candidates = idx.objects.filter(
+      (obj) =>
+        obj.record.meta.kind === 'contest' &&
+        !obj.effectiveArchived &&
+        obj.record.meta.links.arenaPath !== undefined,
+    );
+
+    for (const obj of candidates) {
+      const contestId = obj.record.meta.id;
+      const title = obj.record.meta.title;
+      let list: ArenaRecordsListDto;
+      try {
+        list = scanContestRecords(this.hostOf(idx, obj));
+      } catch (err) {
+        warnings.push(`「${title}」的存档读不出来，这一场没有参与排序：${asError(err).message}`);
+        continue;
+      }
+      for (const err of list.errors) {
+        warnings.push(`「${title}」· ${err.file}：${err.message}`);
+      }
+      for (const record of list.records) {
+        const at = Date.parse(record.updatedAt);
+        if (!Number.isFinite(at)) {
+          // 校验已在 shared 收口，这里只兜底：解析不出时间的档不参与排序，但要留下痕迹
+          warnings.push(`「${title}」· ${record.recordId}：updatedAt 解析不出时间，未参与排序`);
+          continue;
+        }
+        pool.push({ at, contestId, record, entry: { contest: this.dtoOf(obj), record } });
+      }
+    }
+
+    // 同一条口径排全序（updatedAt 降序 → contest id 升序 → recordId 升序），与 isMoreRecent 一字不差
+    pool.sort((a, b) => {
+      if (a.at !== b.at) return b.at - a.at;
+      const byContest = comparePosix(a.contestId, b.contestId);
+      if (byContest !== 0) return byContest;
+      return comparePosix(a.record.recordId, b.record.recordId);
+    });
+    // 快速跳转架按「场」去重：同场多档只留最新一份（排序后首次出现即最新）
+    const byContest = new Map<string, WorkRecentContestEntryDto>();
+    for (const item of pool) {
+      if (!byContest.has(item.contestId)) byContest.set(item.contestId, item.entry);
+      if (byContest.size >= WORK_RECENTS_LIMIT) break;
+    }
+    const recents = [...byContest.values()];
+
+    return { recent: recents[0] ?? null, recents, warnings, rule: WORK_RECENT_CONTEST_RULE };
   }
 
   getArenaRecordItem(arenaPath: string, recordId: string): ArenaRecordItemDto {

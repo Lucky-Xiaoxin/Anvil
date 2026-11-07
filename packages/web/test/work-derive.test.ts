@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { WorkObjectDto } from '@anvil/shared';
+import type { ProblemMarkInput, ProblemMarksProblem, WorkObjectDto } from '@anvil/shared';
 import {
   allLabels,
   availableContests,
   availableTemplates,
   contestCountLabel,
   expandKeysForSelection,
+  filterProblemsByMarks,
   filterWorkObjects,
   folderActionsOf,
   groupWorkObjects,
@@ -13,6 +14,8 @@ import {
   kindCounts,
   linkedProblemsetsOf,
   pathBreadcrumb,
+  problemMarkFilterMatches,
+  problemMarksFilterCounts,
   problemsetLinkOf,
   problemsFromArena,
   templateChoiceToId,
@@ -159,6 +162,76 @@ describe('榜单 problems[] → 题目快照（30 §3.2；缺 / 坏 alias 按题
     expect(problemsFromArena({})).toEqual([]);
     expect(problemsFromArena({ problems: [] })).toEqual([]);
     expect(problemsFromArena(null)).toEqual([]);
+  });
+});
+
+describe('题目标记筛选（进度口径：星标 / 标签不改进度）', () => {
+  const problems: ProblemMarksProblem[] = [
+    { alias: 'A', title: 'Alpha' },
+    { alias: 'B', title: 'Beta' },
+    { alias: 'C', title: 'Circuit' },
+    { alias: 'D', title: 'Delta' },
+  ];
+  const mark = (patch: Partial<ProblemMarkInput> = {}): ProblemMarkInput => ({
+    progress: null,
+    star: false,
+    tags: [],
+    ...patch,
+  });
+  const marks: Record<string, ProblemMarkInput> = {
+    A: mark({ progress: 'todo', tags: ['dp'] }),
+    // 进度为空但已有星标 / 标签：仍算未标记，不因「有条目」就变成已标记
+    B: mark({ star: true, tags: ['图论'] }),
+    C: mark({ progress: 'contest-ac' }),
+    // 题目快照里没有的 alias（清单缩水后残留）不参与筛选与计数
+    Z: mark({ progress: 'todo', star: true }),
+  };
+
+  it('all 保留题序全部；unmarked 只看进度空；todo 只认显式待补', () => {
+    expect(filterProblemsByMarks(problems, marks, 'all').map((p) => p.alias)).toEqual(['A', 'B', 'C', 'D']);
+    expect(filterProblemsByMarks(problems, marks, 'unmarked').map((p) => p.alias)).toEqual(['B', 'D']);
+    expect(filterProblemsByMarks(problems, marks, 'todo').map((p) => p.alias)).toEqual(['A']);
+  });
+
+  it('all 返回副本，不改调用方数组', () => {
+    const out = filterProblemsByMarks(problems, marks, 'all');
+    expect(out).not.toBe(problems);
+    out.pop();
+    expect(problems).toHaveLength(4);
+  });
+
+  it('计数与筛选同口径：all = 题目数；空 marks 全部未标记', () => {
+    expect(problemMarksFilterCounts(problems, marks)).toEqual({ all: 4, unmarked: 2, todo: 1 });
+    expect(problemMarksFilterCounts(problems, {})).toEqual({ all: 4, unmarked: 4, todo: 0 });
+    expect(problemMarksFilterCounts([], marks)).toEqual({ all: 0, unmarked: 0, todo: 0 });
+    for (const key of ['all', 'unmarked', 'todo'] as const) {
+      expect(filterProblemsByMarks(problems, marks, key)).toHaveLength(problemMarksFilterCounts(problems, marks)[key]);
+    }
+  });
+
+  it('条目只看自有键：null 原型与继承来的键都按未标记', () => {
+    const nullProto = Object.create(null) as Record<string, ProblemMarkInput>;
+    nullProto.A = mark({ progress: 'post-solved' });
+    expect(filterProblemsByMarks(problems, nullProto, 'unmarked').map((p) => p.alias)).toEqual(['B', 'C', 'D']);
+
+    const inherited = Object.create({ A: mark({ progress: 'todo' }), D: mark({ progress: 'todo' }) }) as Record<
+      string,
+      ProblemMarkInput
+    >;
+    expect(filterProblemsByMarks(problems, inherited, 'todo')).toEqual([]);
+    expect(problemMarksFilterCounts(problems, inherited)).toEqual({ all: 4, unmarked: 4, todo: 0 });
+  });
+
+  it('problemMarkFilterMatches：已补 / 已过既不算未标记也不算待补', () => {
+    expect(problemMarkFilterMatches(null, 'all')).toBe(true);
+    expect(problemMarkFilterMatches('post-solved', 'all')).toBe(true);
+    expect(problemMarkFilterMatches(null, 'unmarked')).toBe(true);
+    expect(problemMarkFilterMatches('todo', 'unmarked')).toBe(false);
+    expect(problemMarkFilterMatches('post-solved', 'unmarked')).toBe(false);
+    expect(problemMarkFilterMatches('contest-ac', 'unmarked')).toBe(false);
+    expect(problemMarkFilterMatches('todo', 'todo')).toBe(true);
+    expect(problemMarkFilterMatches('post-solved', 'todo')).toBe(false);
+    expect(problemMarkFilterMatches(null, 'todo')).toBe(false);
   });
 });
 

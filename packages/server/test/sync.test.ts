@@ -323,3 +323,46 @@ describe('失败与错误文案', () => {
     expect(f.urls).toHaveLength(2);
   });
 });
+
+describe('HTML 网关响应（BAD_JSON）按瞬态重试', () => {
+  /** respond 返回原始字符串时直接当响应体（不走 JSON.stringify），可造 HTML 网关页 */
+  function makeRawClient(respond: (call: number) => string): { urls: string[]; sleeps: number[]; client: CfClient } {
+    const urls: string[] = [];
+    const sleeps: number[] = [];
+    const client = new CfClient({
+      fetchImpl: (async () => {
+        urls.push('u');
+        const body = respond(urls.length);
+        return { status: 200, text: async () => body } as unknown as Response;
+      }) as typeof fetch,
+      sleep: async (ms: number) => {
+        sleeps.push(ms);
+      },
+      now: () => 0,
+    });
+    return { urls, sleeps, client };
+  }
+
+  it('第一次回 HTML、第二次正常：自动重试后成功，不再一击即溃', async () => {
+    let n = 0;
+    const f = makeRawClient(() => (++n === 1 ? '<html>503 Service Temporarily Unavailable</html>' : JSON.stringify(ok([sub(1)]))));
+    await expect(f.client.call('user.status', { handle: 'x', count: 1 })).resolves.toBeTruthy();
+    expect(f.urls).toHaveLength(2);
+    // sleeps[0] = 1s 指数退避（sleeps[1] = 2s 是第二次请求前的常规节流）
+    expect(f.sleeps[0]).toBe(1000);
+  });
+
+  it('一直回 HTML：重试耗尽报 network，原因带「返回的不是 JSON」', async () => {
+    const f = makeRawClient(() => '<html>gateway</html>');
+    try {
+      await f.client.call('user.status', { handle: 'x', count: 1 });
+      expect.unreachable('应该抛错');
+    } catch (err) {
+      expect(err).toBeInstanceOf(CfError);
+      expect((err as CfError).kind).toBe('network');
+      expect((err as CfError).message).toContain('已重试 3 次');
+      expect((err as CfError).message).toContain('返回的不是 JSON');
+    }
+    expect(f.urls).toHaveLength(4);
+  });
+});

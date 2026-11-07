@@ -7,9 +7,9 @@ import { useTip } from '../tip.tsx';
 import { Icon } from './ui.tsx';
 import { loadRail, saveRail } from './arena/session.ts';
 
-export type View = 'dashboard' | 'master' | 'arena' | 'settings';
+export type View = 'home' | 'dashboard' | 'master' | 'arena' | 'settings';
 
-const TITLES: Record<View, string> = { dashboard: '个人数据', master: '工坊', arena: '模拟榜单', settings: '设置' };
+const TITLES: Record<View, string> = { home: '主界面', dashboard: '个人数据', master: '工坊', arena: '模拟榜单', settings: '设置' };
 const DOT: Record<SourceState, string> = {
   ok: 'var(--ok)',
   stale: 'var(--warn)',
@@ -60,13 +60,24 @@ export function AppShell({ view, onNavigate, status, source, xcpc, busy, delta, 
   return (
     <div className={`app${dash ? ` dash pf-${source}${isXcpc ? ' is-strong' : ''}` : ''}${rail ? ' is-rail' : ''}`}>
       <aside className="nav">
-        <div className="brand">
+        {/* 主界面入口挂在原 logo + ANVIL 的位置（34 §依据：用户拍板）；收起态走 navlabel 浮标报全名 */}
+        <button
+          className="brand home-entry"
+          type="button"
+          aria-current={view === 'home' ? 'page' : undefined}
+          title="主界面"
+          onClick={() => onNavigate('home')}
+        >
           <Icon id="i-anvil" />
-          <div className="brand__txt">
-            <div className="brand__name">ANVIL</div>
-            <div className="brand__sub">铁砧</div>
-          </div>
-        </div>
+          <span className="brand__txt">
+            <span className="brand__name">主界面</span>
+            <span className="brand__sub">ANVIL · 铁砧</span>
+          </span>
+          <span className="navlabel">
+            主界面
+            <small>ANVIL · 铁砧</small>
+          </span>
+        </button>
         <div className="navlist">
           <button className="navitem" aria-current={view === 'dashboard' ? 'page' : undefined} onClick={() => onNavigate('dashboard')}>
             <Icon id="i-dash" />
@@ -189,6 +200,7 @@ export function AppShell({ view, onNavigate, status, source, xcpc, busy, delta, 
         {bare ? null : (
           <div className="topbar">
           <h2>{TITLES[view]}</h2>
+          {view === 'home' ? <span className="topbar__meta">接着上次练</span> : null}
           {view === 'master' ? null : isXcpc ? (
             claimed ? (
               <span
