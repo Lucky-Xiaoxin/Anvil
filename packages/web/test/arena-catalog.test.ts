@@ -7,6 +7,7 @@ import { catalogHeadline, flattenLeaves, leafRowOf, searchLeaves, tierOf, toGrou
 import {
   clearGhost,
   clearSession,
+  ghostDisplayOrder,
   ghostKey,
   loadGhost,
   loadOpenGroups,
@@ -220,6 +221,23 @@ describe('「我的成绩」幽灵行存储（docs/contracts/20 §2.1 · v8 逐�
     expect(s.getItem(ghostKey(PATH))).toBe(
       '{"show":true,"subs":[{"p":1,"t":28,"r":"WA"},{"p":1,"t":45,"r":"AC"},{"p":7,"t":170,"r":"WA"},{"p":7,"t":187,"r":"AC"}]}',
     );
+  });
+
+  it('展示序是全局按时刻降序（新发的在上，同分钟按题号升序），与落盘序各管各的', () => {
+    const subs = [
+      { p: 0, t: 2, r: 'WA' },
+      { p: 1, t: 1, r: 'WA' },
+      { p: 8, t: 161, r: 'AC' },
+      { p: 2, t: 1, r: 'AC' },
+      { p: 0, t: 10, r: 'AC' },
+    ] as const;
+    expect([...subs].sort(ghostDisplayOrder)).toEqual([
+      { p: 8, t: 161, r: 'AC' },
+      { p: 0, t: 10, r: 'AC' },
+      { p: 0, t: 2, r: 'WA' },
+      { p: 1, t: 1, r: 'WA' },
+      { p: 2, t: 1, r: 'AC' },
+    ]);
   });
 
   it('「展示我」关掉也照样留数据；全空的 subs 存得下（清除后重录）', () => {

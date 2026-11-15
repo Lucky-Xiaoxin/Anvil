@@ -204,8 +204,11 @@ export function loadGhost(store: Store, path: string): GhostData | null {
   }
 }
 
-/** 先题后时：与榜上的列序一致，逐发清单里改错好找 */
+/** 存储序（先题后时）：读 / 写共用这一份，minuteKey 序列化才稳定（docs/contracts/20 §2.3） */
 const ghostOrder = (a: GhostSub, b: GhostSub): number => a.p - b.p || a.t - b.t;
+
+/** 展示序（全局按提交时刻降序，新发的在上，xcpc.io 口径；同分钟按题号升序兜底）——只管面板清单，不落盘（2026-11-15 补记） */
+export const ghostDisplayOrder = (a: GhostSub, b: GhostSub): number => b.t - a.t || a.p - b.p;
 
 /** 写入前排序：minuteKey 要序列化这份 subs，顺序稳定才不会白重建榜 */
 export function saveGhost(store: Store, path: string, data: GhostData): void {

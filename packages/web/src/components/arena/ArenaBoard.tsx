@@ -1312,8 +1312,8 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
   const targetName = draft?.target?.name ?? null;
   const showTargetArrow = canSaveHere && targetName !== null && recordCount >= 2 && saveFlash === null;
 
-  const openGhostFromMenu = (): void => {
-    const el = topbarRef.current?.querySelector<HTMLElement>('.arena-more__trigger') ?? null;
+  /** 「我的成绩」面板锚在触发它的控件上（人形按钮 / 空态胶囊），不锚死某个固定入口 */
+  const openGhostPop = (el: HTMLElement | null): void => {
     const r = el?.getBoundingClientRect();
     if (r === undefined || r === null) return;
     setPop({ kind: 'ghost', origin: null, anchor: { left: r.left, top: r.top, width: r.width, height: r.height } });
@@ -1326,9 +1326,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
     ...(recordCount > 1 ? { meta: String(recordCount) } : {}),
     onSelect: openHistoryLayer,
   });
-  if (identity.kind === 'view' || identity.kind === 'edit' || (identity.kind === 'practice' && draft !== null)) {
-    menuItems.push({ key: 'ghost', label: '我的成绩', onSelect: openGhostFromMenu });
-  }
+  // 「我的成绩」不进菜单：顶栏常驻人形按钮是唯一入口（2026-11-15 恢复 v8 口径；契约 29 §6.1.1「同一动作不得双入口」）
   if ((identity.kind === 'practice' || identity.kind === 'edit') && canSaveDraft(draft)) {
     menuItems.push({
       key: 'save-as',
@@ -1422,8 +1420,20 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
             <i className="dot dot--ok" />我 <b>第 {ghostRow.rank} 名</b>
           </button>
         ) : ghostCapsuleEmpty ? (
-          <button className="ghrank ghrank--empty" onClick={openGhostFromMenu} title="我的成绩 · 0 题 · 0 罚时 · 点击打开我的成绩面板">
+          <button className="ghrank ghrank--empty" onClick={(e) => openGhostPop(e.currentTarget)} title="我的成绩 · 0 题 · 0 罚时 · 点击打开我的成绩面板">
             <i className="dot dot--idle" />我 <b>—</b>
+          </button>
+        ) : null}
+
+        {/* 「我的成绩」常驻入口（v8 口径回归，2026-11-15）：条件同原菜单项，不随成绩数据出现/消失；「我 第 N 名」胶囊仍只管跳行 */}
+        {identity.kind === 'view' || identity.kind === 'edit' || (identity.kind === 'practice' && draft !== null) ? (
+          <button
+            className="btn btn--ghost btn--sm"
+            aria-label="我的成绩"
+            title="我的成绩 · 录入 VP 成绩，看自己在榜上的位置"
+            onClick={(e) => openGhostPop(e.currentTarget)}
+          >
+            <Icon id="i-user" />
           </button>
         ) : null}
 
@@ -1916,6 +1926,7 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
               durationMs={span}
               data={currentGhost}
               readOnly={identity.kind === 'view' || saveBusy}
+              nowMin={runningHere ? () => Math.floor(elapsed / 60_000) : undefined}
               onChange={onGhostChange}
               onClear={onGhostClear}
             />
