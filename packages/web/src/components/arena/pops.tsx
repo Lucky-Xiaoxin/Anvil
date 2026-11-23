@@ -32,7 +32,7 @@ export function Popover({
   anchor,
   viewport,
   onClose,
-  width = 270,
+  width: wantedWidth = 270,
   height = 260,
   label = '明细',
   cls,
@@ -51,8 +51,9 @@ export function Popover({
 }) {
   /*
    * 高度在测量前未知，按稿内的落点算：默认贴在锚点下方 8px，装不下就翻到上方。
-   * 宽度是稿内定值，不需要测量就能定横向。
+   * 宽度是稿内定值，但窄视口要钳到「视口宽 - 20」，免得队伍详情这种宽弹层被右缘裁掉。
    */
+  const width = Math.min(wantedWidth, Math.max(1, viewport.w - 20));
   const left = Math.max(10, Math.min(viewport.w - width - 10, anchor.left + anchor.width / 2 - width / 2));
   const below = anchor.top + anchor.height + 8;
   const flip = below + height > viewport.h;

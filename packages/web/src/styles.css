@@ -336,8 +336,9 @@ code,.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-fea
 .ro__n{font-family:var(--font-num);font-size:10px;color:var(--text-mute);flex:0 0 100%;margin-top:-4px}
 .afoot{display:flex;align-items:center;gap:var(--sp-2);padding:10px var(--sp-3) 14px;flex-wrap:wrap}
 
+/* 130：要浮在弹层（60）与对话框（100）之上，否则队伍详情里的图表 tooltip 会被面板盖住 */
 .tip{
-  position:fixed;z-index:50;pointer-events:none;
+  position:fixed;z-index:130;pointer-events:none;
   transform:translate(-50%,-100%);
   background:#05070A;border:1px solid #2C3746;border-radius:var(--r-s);
   padding:7px 10px;min-width:118px;max-width:320px;
@@ -1237,6 +1238,20 @@ code,.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-fea
   width:20px;height:20px;border-radius:var(--r-s);flex:0 0 auto;display:grid;place-items:center;
   background:var(--panel-2);border:1px solid var(--line);font-family:var(--font-num);font-size:11px;color:var(--text-dim);
 }
+/* 队伍详情三页（docs/contracts/35）：宽弹层、页签固定、内容区滚动 */
+.pop--team{display:flex;flex-direction:column;height:min(520px,78vh);max-height:none;overflow:hidden}
+.pop__tabs{display:flex;gap:2px;padding:2px;margin:0 0 10px;background:#0B0F14;border:1px solid var(--line-soft);border-radius:6px;flex:0 0 auto}
+.pop__tab{flex:1 1 0;height:26px;border:0;border-radius:4px;background:transparent;color:var(--text-dim);font-size:12px;letter-spacing:.02em;cursor:pointer}
+.pop__tab:hover{color:var(--text)}
+.pop__tab.is-on{background:var(--panel-2);color:var(--text);box-shadow:inset 0 0 0 1px var(--line)}
+.pop__tabbody{flex:1 1 auto;min-height:0;overflow:auto;padding-right:2px}
+.pop__subrow{display:grid;grid-template-columns:52px 64px 24px minmax(0,1fr);gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-soft)}
+.pop__subrow:last-child{border-bottom:none}
+.pop__alias{font-family:var(--font-num);font-size:11px;color:var(--text-dim);text-align:center}
+.rankchart__title{font-family:var(--font-num);font-size:10.5px;letter-spacing:.06em;color:var(--text-dim);margin:2px 0 6px;text-transform:uppercase}
+.rankchart{position:relative}
+.rankchart svg{display:block;width:100%;height:auto;cursor:crosshair}
+.rankchart__note{font-size:10.5px;color:var(--text-mute);line-height:1.6;margin-top:6px}
 .backdrop{position:fixed;inset:0;z-index:55;background:rgba(5,7,10,.42)}
 /* v8 · 「我的成绩」逐发录入面板 + 顶栏读数（照 design/mock-04-simboard.html v8 原样抄） */
 .ghin{width:58px;flex:0 0 auto;padding:3px 7px;background:#0B0F14;border:1px solid var(--line);border-radius:var(--r-s);color:var(--text);font-family:var(--font-num);font-size:11.5px;font-variant-numeric:tabular-nums}

@@ -49,6 +49,7 @@ import {
 import type { LeafRow } from './catalog.ts';
 import { GhostPanel } from './GhostPanel.tsx';
 import { Popover, PopShell, resClass, type Anchor } from './pops.tsx';
+import { TeamDetail } from './TeamDetail.tsx';
 import { TEAM_COL, moveFocus, resolveFocus, sameFocus, type BoardFocus, type BoardGrid, type MoveDir } from './board-focus.ts';
 import { SaveDiscardSlider } from './SaveDiscardSlider.tsx';
 import {
@@ -1915,11 +1916,28 @@ export function ArenaBoard({ row, store, onBack, mode, recordId = null, openHist
       </div>
 
       {pop !== null ? (
-        <Popover anchor={pop.anchor} viewport={{ w: window.innerWidth, h: window.innerHeight }} onClose={() => setPop(null)} width={pop.kind === 'ghost' ? 330 : 270} height={pop.kind === 'ghost' ? 500 : 260} label={pop.kind === 'ghost' ? '我的成绩' : '明细'} cls={pop.kind === 'ghost' ? 'pop--panel' : undefined}>
+        <Popover
+          anchor={pop.anchor}
+          viewport={{ w: window.innerWidth, h: window.innerHeight }}
+          onClose={() => setPop(null)}
+          width={pop.kind === 'ghost' ? 330 : pop.kind === 'team' ? 520 : 270}
+          height={pop.kind === 'ghost' ? 500 : pop.kind === 'team' ? 520 : 260}
+          label={pop.kind === 'ghost' ? '我的成绩' : pop.kind === 'team' ? (pop.ti === -1 ? '我的成绩' : '队伍详情') : '明细'}
+          cls={pop.kind === 'ghost' ? 'pop--panel' : pop.kind === 'team' ? 'pop--panel pop--team' : undefined}
+        >
           {pop.kind === 'sub' ? (
             <SubPop model={model} ti={pop.ti} p={pop.p} viewMs={viewMs} cap={board.cap} ghost={currentGhost} />
           ) : pop.kind === 'team' ? (
-            <TeamPop model={model} ti={pop.ti} board={board} />
+            <TeamDetail
+              model={model}
+              ti={pop.ti}
+              board={board}
+              viewMs={viewMs}
+              cap={board.cap}
+              onlyFormal={onlyFormal}
+              unsealed={review && !frozenView}
+              ghost={ghostSubs}
+            />
           ) : (
             <GhostPanel
               problems={model.problems}
@@ -2332,56 +2350,3 @@ function SubPop({ model, ti, p, viewMs, cap, ghost }: { model: ContestModel; ti:
 }
 
 const toCap = (x: SrkSolution): number => toMs(x.time);
-
-function TeamPop({ model, ti, board }: { model: ContestModel; ti: number; board: Board }) {
-  const row = board.rows.find((r) => r.ti === ti);
-  if (ti === -1) {
-    const g = board.ghostTeam;
-    if (g === null || g === undefined) return null;
-    return (
-      <PopShell head={{ title: g.name, sub: g.org }}>
-        <div className="pop__who">
-          <div className="hint">VP 成绩手动录入，点格子看每题明细。</div>
-        </div>
-        <div className="pop__rule" />
-        <div className="pop__kv">
-          <span className="pop__k">Seat</span>
-          <span className="pop__v num">{g.seat}</span>
-        </div>
-        <div className="pop__kv">
-          <span className="pop__k">状态</span>
-          <span className="pop__v">{row?.medal ? row.medalTitle : '正式队'}</span>
-        </div>
-      </PopShell>
-    );
-  }
-  const team = model.teams[ti];
-  if (team === undefined) return null;
-  const title = team.name === '' ? team.org || '队伍信息未收录' : team.name;
-  const head = { title, sub: team.name === '' || team.org === '' ? '' : team.org };
-  return (
-    <PopShell head={head}>
-      <div className="pop__who">
-        {team.members.length === 0 ? (
-          <div className="hint">快照未收录队员名单。</div>
-        ) : (
-          team.members.map((m, i) => (
-            <div className="pop__p" key={i}>
-              <span className="av">{m.slice(0, 1)}</span>
-              <span>{m}</span>
-            </div>
-          ))
-        )}
-      </div>
-      <div className="pop__rule" />
-      <div className="pop__kv">
-        <span className="pop__k">Seat</span>
-        <span className="pop__v num">#{team.seat}</span>
-      </div>
-      <div className="pop__kv">
-        <span className="pop__k">状态</span>
-        <span className="pop__v">{team.star ? <span className="tgtag">打星</span> : row?.medal ? `${row.medalTitle}` : '正式队'}</span>
-      </div>
-    </PopShell>
-  );
-}
